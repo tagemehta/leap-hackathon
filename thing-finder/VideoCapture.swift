@@ -12,7 +12,9 @@
 //  to a delegate implementing the VideoCaptureDelegate protocol.
 
 import AVFoundation
+import Combine
 import CoreVideo
+import SwiftUI
 import UIKit
 
 // Defines the protocol for handling video frame capture events.
@@ -49,7 +51,7 @@ public class VideoCapture: NSObject {
 
   // Configures the camera and capture session with optional session presets.
   public func setUp(
-    sessionPreset: AVCaptureSession.Preset = .hd1280x720, completion: @escaping (Bool) -> Void
+    sessionPreset: AVCaptureSession.Preset = .photo, completion: @escaping (Bool) -> Void
   ) {
     queue.async {
       let success = self.setUpCamera(sessionPreset: sessionPreset)
@@ -74,7 +76,8 @@ public class VideoCapture: NSObject {
 
     let previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
     previewLayer.videoGravity = .resizeAspectFill
-    previewLayer.connection?.videoOrientation = .portrait
+    // Possible bug here
+    self.updateVideoOrientation()
     self.previewLayer = previewLayer
 
     let settings: [String: Any] = [
@@ -91,22 +94,7 @@ public class VideoCapture: NSObject {
     if captureSession.canAddOutput(cameraOutput) {
       captureSession.addOutput(cameraOutput)
     }
-    switch UIDevice.current.orientation {
-    case .portrait:
-      videoOutput.connection(with: .video)?.videoOrientation = .portrait
-    case .portraitUpsideDown:
-      videoOutput.connection(with: .video)?.videoOrientation = .portraitUpsideDown
-    case .landscapeRight:
-      videoOutput.connection(with: .video)?.videoOrientation = .landscapeLeft
-    case .landscapeLeft:
-      videoOutput.connection(with: .video)?.videoOrientation = .landscapeRight
-    default:
-      videoOutput.connection(with: .video)?.videoOrientation = .portrait
-    }
 
-    if let connection = videoOutput.connection(with: .video) {
-      self.previewLayer?.connection?.videoOrientation = connection.videoOrientation
-    }
     do {
       try captureDevice.lockForConfiguration()
       captureDevice.focusMode = .continuousAutoFocus
@@ -143,17 +131,25 @@ public class VideoCapture: NSObject {
     guard let connection = videoOutput.connection(with: .video) else { return }
     switch UIDevice.current.orientation {
     case .portrait:
-      connection.videoOrientation = .portrait
+      connection.videoRotationAngle = 90
     case .portraitUpsideDown:
-      connection.videoOrientation = .portraitUpsideDown
+      connection.videoRotationAngle = 270
     case .landscapeRight:
-      connection.videoOrientation = .landscapeLeft
+      connection.videoRotationAngle = 180
     case .landscapeLeft:
-      connection.videoOrientation = .landscapeRight
+      connection.videoRotationAngle = 0
     default:
       return
     }
-    self.previewLayer?.connection?.videoOrientation = connection.videoOrientation
+    self.previewLayer?.connection?.videoRotationAngle = connection.videoRotationAngle
+  }
+
+  /// Converts a rectangle from metadata output coordinates to the preview layer's coordinate system
+  /// - Parameter rect: The rectangle in metadata output coordinates
+  /// - Returns: The rectangle converted to the preview layer's coordinate system
+  func convertFromMetadataOutputRect(_ rect: CGRect) -> CGRect {
+    guard let previewLayer = previewLayer else { return .zero }
+    return previewLayer.layerRectConverted(fromMetadataOutputRect: rect)
   }
 
   public func capturePhoto(delegate: AVCapturePhotoCaptureDelegate) {
