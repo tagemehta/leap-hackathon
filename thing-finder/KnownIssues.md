@@ -1,0 +1,9 @@
+- Object tracking will jump from one object of a class to another object of a class
+  - Potential fix:
+    - Verify object after a short delay
+    - Check for big jumps in object location and handle
+- error handling neeeds to be more robust.
+- App is not chatty enough
+  - It doesn't say searching when it starts searching or found when found
+- Detections aren't as plentiful as in the yolo app. Check the camera configuration
+- No unit or integration testing happening

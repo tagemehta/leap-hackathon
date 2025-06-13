@@ -99,8 +99,10 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
         if detectionState == .searching && verifier.timeSinceLastVerification() > GPT_DELAY {
           frameCGImage =
             frameCGImage ?? ImageUtilities.cmSampleBuffertoCGImage(buffer: sampleBuffer)
+          let trackingReq = VNTrackObjectRequest(detectedObjectObservation: candidate)
+          activeTracking.append(trackingReq)
           let identifiedObject = IdentifiedObject(
-            box: box, observation: candidate, trackingRequest: nil)
+            box: box, observation: candidate, trackingRequest: trackingReq)
           startVerification(for: identifiedObject, image: frameCGImage!)
           identifiedObjects.append(identifiedObject)
         }
@@ -115,7 +117,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
 
     if case .found(let target) = self.detectionState {
       // Track one object
-      guard let observation = target.trackingRequest?.results?.first as? VNDetectedObjectObservation
+      guard let observation = target.trackingRequest.results?.first as? VNDetectedObjectObservation
       else {
         // Lost in tracking for 5 frames
         if target.lostInTracking > 4 {
@@ -138,18 +140,18 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
       }
       // Code to help the tracker be more accurate and not decay
       if allDetections.count > 0 {  // and significantly different box?
-              let bestCandidate = detectionManager.findBestOverlap(
-                target: observation.boundingBox,
-                candidates: allDetections)
-              target.trackingRequest?.isLastFrame = true
-              let newTrackingReq = VNTrackObjectRequest(detectedObjectObservation: bestCandidate)
-              newTrackingReq.trackingLevel = .accurate
-              let newIdObj = IdentifiedObject(
-                box: target.box,
-                observation: bestCandidate,
-                trackingRequest: newTrackingReq)
-              self.detectionState = .found(target: newIdObj)
-              self.activeTracking.append(newTrackingReq)
+        let bestCandidate = detectionManager.findBestOverlap(
+          target: observation.boundingBox,
+          candidates: allDetections)
+        self.clearActiveTracking()
+        let newTrackingReq = VNTrackObjectRequest(detectedObjectObservation: bestCandidate)
+        newTrackingReq.trackingLevel = .accurate
+        let newIdObj = IdentifiedObject(
+          box: target.box,
+          observation: bestCandidate,
+          trackingRequest: newTrackingReq)
+        self.detectionState = .found(target: newIdObj)
+        self.activeTracking.append(newTrackingReq)
       }
 
       let normalizedBox = observation.boundingBox
@@ -192,13 +194,12 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
         receiveValue: { [weak self] matched in
           guard let self = self else { return }
           if matched {
-            let trackingReq = VNTrackObjectRequest(detectedObjectObservation: candidate.observation)
-            trackingReq.trackingLevel = .accurate
-            self.clearActiveTracking()
+            self.clearActiveTracking(except: candidate.trackingRequest)
             let withTracking = IdentifiedObject(
-              box: candidate.box, observation: candidate.observation, trackingRequest: trackingReq)
+              box: candidate.box, observation: candidate.observation,
+              trackingRequest: candidate.trackingRequest)
             self.detectionState = .found(target: withTracking)
-            self.activeTracking.append(trackingReq)
+            self.activeTracking.append(candidate.trackingRequest)
             self.cancelAllInflight()
           } else {
             print("not matched")

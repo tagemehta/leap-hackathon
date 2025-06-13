@@ -12,12 +12,12 @@ struct IdentifiedObject: Identifiable, Equatable {
   let id = UUID()
   var box: BoundingBox
   var observation: VNRecognizedObjectObservation
-  var trackingRequest: VNTrackObjectRequest?
+  var trackingRequest: VNTrackObjectRequest
   var lostInTracking: Int  // Number of frames it's been lost for
   init(
     box: BoundingBox,
     observation: VNRecognizedObjectObservation,
-    trackingRequest: VNTrackObjectRequest?,
+    trackingRequest: VNTrackObjectRequest,
     lostInTracking: Int = 0
   ) {
     self.box = box
