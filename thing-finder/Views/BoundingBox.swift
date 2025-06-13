@@ -2,27 +2,10 @@
 //  BoundingBox.swift
 //  thing-finder
 //
-//  Created by Sam Mehta on 6/9/25.
+//  Created by Tage Mehta on 6/9/25.
 //
 import SwiftUI
 import Vision
-
-struct BoundingBox: Identifiable {
-  let id = UUID()
-  var imageRect: CGRect
-  var viewRect: CGRect
-  var label: String
-  var color: Color
-  var alpha: Double
-
-  init(imageRect: CGRect, viewRect: CGRect, label: String, color: Color = .red, alpha: Double = 0.3) {
-    self.imageRect = imageRect
-    self.viewRect = viewRect
-    self.label = label
-    self.color = color
-    self.alpha = alpha
-  }
-}
 
 struct BoundingBoxView: View {
   let box: BoundingBox
@@ -44,7 +27,7 @@ struct BoundingBoxView: View {
 
         // Label background
         if !box.label.isEmpty {
-          Text(box.label)
+          Text(box.label + " " + String(format: "%.2f", box.alpha))
             .font(.caption)
             .padding(4)
             .background(box.color.opacity(0.8))

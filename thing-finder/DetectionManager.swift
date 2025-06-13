@@ -2,7 +2,7 @@
 //  DetectionManager.swift
 //  thing-finder
 //
-//  Created by Sam Mehta on 6/9/25.
+//  Created by Tage Mehta on 6/9/25.
 //
 import AVFoundation
 import Photos
@@ -11,7 +11,10 @@ import Vision
 
 class DetectionManger {
   private var mlModel: VNCoreMLModel
-  private var previousDetections: [[VNRecognizedObjectObservation]] = []
+  // last processed frame
+  private var lastDetections: [VNRecognizedObjectObservation] = []
+  /// Stores consecutive-frame counts as a cache
+  private var detectionStability: [CGRect: Int] = [:]
   private lazy var visionRequest: VNCoreMLRequest = {
     let request = VNCoreMLRequest(
       model: mlModel
@@ -32,132 +35,119 @@ class DetectionManger {
       cmSampleBuffer: pixelBuffer, orientation: .up, options: [:])
     do {
       // MARK - check input into model
-//      lazy var visionRequest2: VNCoreMLRequest = {
-//        do {
-//          let visionModel = try VNCoreMLModel(for: Image2Image().model)
-//
-//          let request = VNCoreMLRequest(
-//            model: visionModel,
-//            completionHandler: { request, error in
-//              if let results = request.results as? [VNPixelBufferObservation],
-//                let pixelBuffer = results.first?.pixelBuffer
-//              {
-//                let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-//                let context = CIContext()
-//                if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
-//                  let uiImage = UIImage(cgImage: cgImage)
-//                  print("Start")
-//                  print(uiImage.base64)
-//                  print("end")
-//                } else {
-//                  print("❌ Failed to create CGImage from CIImage")
-//                }
-//              } else if let error = error {
-//                print("❌ Vision request error: \(error.localizedDescription)")
-//              } else {
-//                print("❌ No results and no error")
-//              }
-//            })
-//
-//          request.imageCropAndScaleOption = .scaleFill
-//          return request
-//        } catch {
-//          fatalError("Failed to create VNCoreMLModel: \(error)")
-//        }
-//      }()
-//      try handler.perform([visionRequest2])
-        try handler.perform([visionRequest])
+      //      lazy var visionRequest2: VNCoreMLRequest = {
+      //        do {
+      //          let visionModel = try VNCoreMLModel(for: Image2Image().model)
+      //
+      //          let request = VNCoreMLRequest(
+      //            model: visionModel,
+      //            completionHandler: { request, error in
+      //              if let results = request.results as? [VNPixelBufferObservation],
+      //                let pixelBuffer = results.first?.pixelBuffer
+      //              {
+      //                let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+      //                let context = CIContext()
+      //                if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+      //                  let uiImage = UIImage(cgImage: cgImage)
+      //                  print("Start")
+      //                  print(uiImage.base64)
+      //                  print("end")
+      //                } else {
+      //                  print("❌ Failed to create CGImage from CIImage")
+      //                }
+      //              } else if let error = error {
+      //                print("❌ Vision request error: \(error.localizedDescription)")
+      //              } else {
+      //                print("❌ No results and no error")
+      //              }
+      //            })
+      //
+      //          request.imageCropAndScaleOption = .scaleFill
+      //          return request
+      //        } catch {
+      //          fatalError("Failed to create VNCoreMLModel: \(error)")
+      //        }
+      //      }()
+      //      try handler.perform([visionRequest2])
+      try handler.perform([visionRequest])
       guard let results = visionRequest.results as? [VNRecognizedObjectObservation] else {
         return []
       }
       let filteredResults = results.filter(detectionFilterFn)
-      if previousDetections.count == 6 {
-        previousDetections.remove(at: 0)
-        previousDetections.append(filteredResults)
-      }
+      self.lastDetections = filteredResults
       return filteredResults
     } catch {
       print("Unexpected detection error: \(error).")
       return []
     }
   }
-  
-  /// Converts a VNRecognizedObjectObservation.boundingBox (norm. units w/ origin at bottom-left)
-  /// into a CGRect in your view’s coordinate space, assuming .scaleFill/videoGravity=resizeAspectFill.
-  func unscaledBoundingBoxes(
-    for normalizedRect: CGRect,
-    imageSize:         CGSize,   // e.g. (width: CVPixelBufferGetWidth, height: CVPixelBufferGetHeight)
-    viewSize:          CGSize    // e.g. videoPreview.bounds.size
-  ) -> (imageRect: CGRect, viewRect: CGRect) {
-    // 1) flip Y & scale normalized → image pixels
-    let imgX = normalizedRect.origin.x * imageSize.width
-    let imgY = (1 - normalizedRect.origin.y - normalizedRect.height) * imageSize.height
-    let imgW = normalizedRect.width  * imageSize.width
-    let imgH = normalizedRect.height * imageSize.height
-    let imageRect = CGRect(x: imgX, y: imgY, width: imgW, height: imgH)
-    
-    // 2) compute the uniform “fill” scale for image → view
-    let scale = max(
-      viewSize.width  / imageSize.width,
-      viewSize.height / imageSize.height
-    )
-    let scaledImageSize = CGSize(
-      width:  imageSize.width  * scale,
-      height: imageSize.height * scale
-    )
-    
-    // 3) compute centering offsets
-    let xOffset = (viewSize.width  - scaledImageSize.width)  / 2
-    let yOffset = (viewSize.height - scaledImageSize.height) / 2
-    
-    // 4) map image-pixel rect into view-pixel rect
-    let viewX = imageRect.minX * scale + xOffset
-    let viewY = imageRect.minY * scale + yOffset
-    let viewW = imageRect.width  * scale
-    let viewH = imageRect.height * scale
-    let viewRect = CGRect(x: viewX, y: viewY, width: viewW, height: viewH)
-    
-    return (imageRect, viewRect)
-  }
 
-  public func stableDetections(iouThreshold: CGFloat = 0.5, stabilityPercent: Double = 0.7)
-    -> [VNRecognizedObjectObservation]
-  {
-    guard !previousDetections.isEmpty, let lastDetections = previousDetections.last else {
-      return []
-    }
+  /// Returns detections that have appeared (≈matched by IoU) in *N* consecutive frames.
+  /// - Parameters:
+  ///   - iouThreshold:  The intersection-over-union threshold that decides whether two boxes refer to the same object.
+  ///   - stabilityPercent:  Minimum fraction of the currently buffered frames that a detection must continuously appear in to be considered *stable*.
+  ///                        E.g. with a 6-frame buffer and `0.7`, a detection must persist for ≥5 consecutive frames.
+  public func stableDetections(
+    iouThreshold: CGFloat = 0.8,
+    requiredConsecutiveFrames: Int = 4
+  ) -> [VNRecognizedObjectObservation] {
 
-    let minStableFrames = Int(round(Double(previousDetections.count - 1) * stabilityPercent))
+    // Compute required consecutive frames (≥ 1).
+    // Build a fresh stability map for **this** frame.
+    var newStability: [CGRect: Int] = [:]
+    var stableObservations: [VNRecognizedObjectObservation] = []
 
-    // For each detection in the last frame, count how many times it appears in previous frames
-    return lastDetections.filter { detection in
-      var matchCount = 0
+    for detection in lastDetections {
+      var consecutive = 1  // At minimum it is present in the current frame.
 
-      // For each previous frame (excluding the last one)
-      for frameIndex in 0..<previousDetections.count - 1 {
-        let frameDetections = previousDetections[frameIndex]
-
-        // Check if any detection in this frame matches our current detection
-        for frameDetection in frameDetections {
-          if detection.boundingBox.iou(with: frameDetection.boundingBox) > iouThreshold {
-            matchCount += 1
-            break  // Found a match in this frame, move to next frame
-          }
-        }
-
-        // Early exit if we can't reach the minimum stable frames
-        if (matchCount + (previousDetections.count - 2 - frameIndex)) < minStableFrames {
-          return false
-        }
+      // Find any *previous* box that matches this one; if found, extend its streak.
+      if let (prevKey, prevCount) = detectionStability.first(where: { (key, _) in
+        detection.boundingBox.iou(with: key) > iouThreshold
+      }) {
+        consecutive = prevCount + 1
+        // Remove so it won’t be matched again this iteration.
+        detectionStability.removeValue(forKey: prevKey)
       }
 
-      return matchCount >= minStableFrames
+      newStability[detection.boundingBox] = consecutive
+
+      if consecutive >= requiredConsecutiveFrames {
+        stableObservations.append(detection)
+      }
     }
+
+    // Replace map for next call.
+    detectionStability = newStability
+
+    return stableObservations
+  }
+  public func findBestOverlap(target: CGRect, candidates: [VNRecognizedObjectObservation])
+    -> VNRecognizedObjectObservation
+  {
+    precondition(!candidates.isEmpty, "candidates array must not be empty")
+    let bestCandidate = candidates.max(
+      by: { $0.boundingBox.iou(with: target) < $1.boundingBox.iou(with: target) }
+    )
+    return bestCandidate!
   }
 
 }
 
 extension CGRect {
+  /// Clamps the rectangle's coordinates to be within [0,1] range
+  func clampedToUnitBounds() -> CGRect {
+    let minX = max(0, min(1, self.minX))
+    let minY = max(0, min(1, self.minY))
+    let maxX = max(0, min(1, self.maxX))
+    let maxY = max(0, min(1, self.maxY))
+
+    // Ensure width and height are not negative
+    let width = max(0, maxX - minX)
+    let height = max(0, maxY - minY)
+
+    return CGRect(x: minX, y: minY, width: width, height: height)
+  }
+
   func iou(with rect: CGRect) -> CGFloat {
     let intersection = self.intersection(rect)
     let intersectionArea = intersection.width * intersection.height
