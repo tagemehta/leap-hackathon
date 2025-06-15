@@ -1,11 +1,20 @@
 import AVFoundation
 import SwiftUI
 
+// Add this extension to dismiss the keyboard
+extension InputView {
+  func hideKeyboard() {
+    UIApplication.shared.sendAction(
+      #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+  }
+}
+
 struct InputView: View {
   @State private var searchMode: SearchMode = .uberFinder
   @State private var selectedClass: String = "car"
   @State private var description: String = ""
   @State private var isShowingCamera = false
+  @FocusState private var isInputFocused: Bool
 
   // Vehicle classes for Uber Finder
   private let vehicleClasses = ["car", "truck", "bus"].sorted()
@@ -80,9 +89,16 @@ struct InputView: View {
         }
       }
       .navigationTitle("Find My Thing")
+      .onAppear {
+        // Dismiss keyboard when view appears
+        hideKeyboard()
+      }
+      .onDisappear {
+        // Dismiss keyboard when view disappears
+        hideKeyboard()
+      }
       .navigationDestination(isPresented: $isShowingCamera) {
         ContentView(
-          selectedClass: selectedClass,
           description: description,
           searchMode: searchMode,
           targetClasses: selectedClasses

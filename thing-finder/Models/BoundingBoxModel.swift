@@ -21,7 +21,7 @@ struct BoundingBox: Identifiable, Hashable {
     self.imageRect = imageRect
     self.viewRect = viewRect
     self.label = label
-    self.color = color
+    self.color = Color(color)
     self.alpha = alpha
   }
 }

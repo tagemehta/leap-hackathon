@@ -2,8 +2,7 @@ import AVFoundation
 import Combine
 import SwiftUI
 import Vision
-
-var mlModel = try! VNCoreMLModel(for: yolo11n(configuration: .init()).model)
+import Photos
 
 enum DetectionState: Equatable {
   case searching
@@ -21,7 +20,12 @@ enum DetectionState: Equatable {
 class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
 
   @MainActor @Published var boundingBoxes: [BoundingBox] = []
+  @Published private(set) var currentFPS: Double = 0.0
   var detectionState: DetectionState = DetectionState.searching
+
+  private var frameTimes: [Date] = []
+  private let maxFrameTimes = 10  // Number of frames to average FPS over
+  private var colors: [String: UIColor] = [:]
 
   private let CONFIDENCE_FILTER: Float = 0.5
   private let GPT_DELAY: TimeInterval = 2
@@ -29,7 +33,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
   private let targetTextDescription: String  // User Input: Describe what we are looking for
   private var bufferDims: (width: Int, height: Int)?
 
-  private var detectionManager = DetectionManger(model: mlModel)
+  private var detectionManager: DetectionManager
   private var navigationManager = NavigationManager()
   private var verifier: LLMVerifier
   private var inflight: [UUID: AnyCancellable] = [:]  // candidate.id ⇒ cancellable
@@ -40,18 +44,42 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
     self.targetClasses = targetClasses
     self.targetTextDescription = targetTextDescription
     self.verifier = LLMVerifier(targetTextDescription: targetTextDescription)
+    let mlModel = try! VNCoreMLModel(for: yolo11n(configuration: .init()).model)
+    mlModel.featureProvider = ThresholdProvider(iouThreshold: 0.45, confidenceThreshold: 0.40)
+    // Object confidence filter (different from label confidence filter)
+    // https://chatgpt.com/share/684eefc5-e14c-8008-916d-622c95448845
+    self.detectionManager = DetectionManager(model: mlModel)
   }
 
   deinit {
     self.cancelAllInflight()
     self.clearActiveTracking()
+    // Clean up FPS tracking
+    frameTimes.removeAll()
   }
 
   public func videoCapture(
     _ capture: VideoCapture, didCaptureVideoFrame sampleBuffer: CMSampleBuffer
   ) {
+    // Update FPS calculation
+    let now = Date()
+    frameTimes.append(now)
+
+    // Remove timestamps older than 1 second
+    frameTimes = frameTimes.filter { now.timeIntervalSince($0) <= 1.0 }
+
+    // Calculate FPS (frames per second)
+    if frameTimes.count >= 2 {
+      let timeInterval = frameTimes.last!.timeIntervalSince(frameTimes.first!)
+      if timeInterval > 0 {
+        let fps = Double(frameTimes.count - 1) / timeInterval
+        DispatchQueue.main.async {
+          self.currentFPS = min(fps, 60.0)  // Cap at 60 FPS which is typical for iOS
+        }
+      }
+    }
     if bufferDims == nil {
-      let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)!
+      guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
       let frameWidth = Int(CVPixelBufferGetWidth(pixelBuffer))
       let frameHeight = Int(CVPixelBufferGetHeight(pixelBuffer))
       bufferDims = (frameWidth, frameHeight)
@@ -68,12 +96,10 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
     let allDetections = detectionManager.detect(
       sampleBuffer,
       {
-        $0.confidence > CONFIDENCE_FILTER
-
-          && targetClasses.contains($0.labels[0].identifier)
+        targetClasses.contains($0.labels[0].identifier) && $0.labels[0].confidence * $0.confidence > CONFIDENCE_FILTER
       })
     // Must appear in 4 consecutive frames
-    //    let candidates = detectionManager.stableDetections()
+//    let candidates = detectionManager.stableDetections()
     let candidates = allDetections
 
     if detectionState.displayAllBoxes {
@@ -87,25 +113,31 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
             candidate.boundingBox,
           imageSize: CGSize(width: bufferDims!.width, height: bufferDims!.height),
           viewSize: capture.previewLayer?.bounds.size ?? .zero)
-
+        let label = candidate.labels[0].identifier
+        if colors[label] == nil {
+          colors[label] = Constants.ultralyticsColors.randomElement() ?? .blue
+        }
+        
         let box = BoundingBox(
           imageRect: imgRect,
           viewRect: viewRect,
-          label: candidate.labels[0].identifier,
-          color: .blue,
-          alpha: Double(candidate.confidence))
-
-        //         Verify new detections
-        if detectionState == .searching && verifier.timeSinceLastVerification() > GPT_DELAY {
-          frameCGImage =
-            frameCGImage ?? ImageUtilities.cmSampleBuffertoCGImage(buffer: sampleBuffer)
-          let trackingReq = VNTrackObjectRequest(detectedObjectObservation: candidate)
-          activeTracking.append(trackingReq)
-          let identifiedObject = IdentifiedObject(
-            box: box, observation: candidate, trackingRequest: trackingReq)
-          startVerification(for: identifiedObject, image: frameCGImage!)
-          identifiedObjects.append(identifiedObject)
-        }
+          label: label,
+          color: Color(colors[label]!),
+          alpha: Double(candidate.labels[0].confidence)
+        )
+        frameCGImage =
+          frameCGImage ?? ImageUtilities.cmSampleBuffertoCGImage(buffer: sampleBuffer)
+        // Verify new detections
+          if detectionState == .searching && verifier.timeSinceLastVerification() > GPT_DELAY {
+            frameCGImage =
+              frameCGImage ?? ImageUtilities.cmSampleBuffertoCGImage(buffer: sampleBuffer)
+            let trackingReq = VNTrackObjectRequest(detectedObjectObservation: candidate)
+            activeTracking.append(trackingReq)
+            let identifiedObject = IdentifiedObject(
+              box: box, observation: candidate, trackingRequest: trackingReq)
+            startVerification(for: identifiedObject, image: frameCGImage!)
+            identifiedObjects.append(identifiedObject)
+          }
 
         boundingBoxesLocal.append(box)
       }
@@ -121,6 +153,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
       else {
         // Lost in tracking for 5 frames
         if target.lostInTracking > 4 {
+          navigationManager.handle(NavEvent.lost)
           self.detectionState = .searching
           self.clearActiveTracking()
         } else {
@@ -138,20 +171,34 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
         }
         return
       }
-      // Code to help the tracker be more accurate and not decay
-      if allDetections.count > 0 {  // and significantly different box?
-        let bestCandidate = detectionManager.findBestOverlap(
-          target: observation.boundingBox,
-          candidates: allDetections)
-        self.clearActiveTracking()
-        let newTrackingReq = VNTrackObjectRequest(detectedObjectObservation: bestCandidate)
-        newTrackingReq.trackingLevel = .accurate
-        let newIdObj = IdentifiedObject(
-          box: target.box,
-          observation: bestCandidate,
-          trackingRequest: newTrackingReq)
-        self.detectionState = .found(target: newIdObj)
-        self.activeTracking.append(newTrackingReq)
+
+      // If there is a detection with good iou, relatively similar area and position of center then track that instead.
+      // Meant to prevent the decaying of the tracking box but not allowing it to jump to a new object
+      let obsArea = Float(observation.boundingBox.width * observation.boundingBox.height)
+      let diagonal = Float(hypot(observation.boundingBox.width, observation.boundingBox.height))
+      if allDetections.count > 0 {  // significantly different tracking box, replace it with the best closest box
+        if let bestCandidate = detectionManager.findBestCandidate(
+          from: allDetections,
+          target: observation.boundingBox),
+           observation.boundingBox.iou(with: bestCandidate.boundingBox) > 0.85,
+          detectionManager.changeInCenter(
+            between: observation.boundingBox, and: bestCandidate.boundingBox
+          ) / diagonal < 0.1,
+          detectionManager.changeInArea(
+            between: observation.boundingBox, and: bestCandidate.boundingBox) / obsArea < 0.1
+        {
+
+          self.clearActiveTracking()
+          let newTrackingReq = VNTrackObjectRequest(detectedObjectObservation: bestCandidate)
+          newTrackingReq.trackingLevel = .accurate
+          let newIdObj = IdentifiedObject(
+            box: target.box,
+            observation: bestCandidate,
+            trackingRequest: newTrackingReq
+          )
+          self.detectionState = .found(target: newIdObj)
+          self.activeTracking.append(newTrackingReq)
+        }
       }
 
       let normalizedBox = observation.boundingBox
@@ -166,17 +213,25 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
         color: .red,
         alpha: Double(observation.confidence))
       self.updateBoundingBoxes(to: [box])
-      navigationManager.navigate(to: box, in: bufferDims!)
+      navigationManager.handle(NavEvent.found, box: box, in: bufferDims!)
     }
   }
 
-  func startVerification(for candidate: IdentifiedObject, image: CGImage) {
-    guard inflight[candidate.id] == nil else { return }  // already verifying
-    let base64Img = ImageUtilities.cropBoxFromBuffer(
-      image: image,
-      box: candidate.box.imageRect,
-      bufferDims: bufferDims!)
+  func startVerification(
+    for candidate: IdentifiedObject, image: CGImage
+  ) {
+    guard inflight[candidate.id] == nil, let bufferDims = bufferDims else { return }  // already verifying
+    let imageRect = candidate.box.imageRect
+    let boundSafeBox = CGRect(
+      x: max(0, min(imageRect.origin.x, CGFloat(bufferDims.width))),
+      y: max(0, min(imageRect.origin.y, CGFloat(bufferDims.height))),
+      width: max(0, min(imageRect.width, CGFloat(bufferDims.width) - imageRect.origin.x)),
+      height: max(0, min(imageRect.height, CGFloat(bufferDims.height) - imageRect.origin.y))
+    )
 
+    guard let croppedImage = image.cropping(to: boundSafeBox) else { return }
+    let uiImage = UIImage(cgImage: croppedImage)
+    let base64Img = uiImage.jpegData(compressionQuality: 1)?.base64EncodedString() ?? ""
     inflight[candidate.id] = verifier.verify(imageData: base64Img)
       .receive(on: DispatchQueue.main)
       .sink(
@@ -187,6 +242,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
           if self.inflight.isEmpty {
             // Redundancy because if it's the last one and being called then it wasn't found
             if case .verifying = self.detectionState {
+              navigationManager.handle(.noMatch)
               self.detectionState = .searching
             }
           }
@@ -197,7 +253,8 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
             self.clearActiveTracking(except: candidate.trackingRequest)
             let withTracking = IdentifiedObject(
               box: candidate.box, observation: candidate.observation,
-              trackingRequest: candidate.trackingRequest)
+              trackingRequest: candidate.trackingRequest,
+              imageEmbedding: nil)
             self.detectionState = .found(target: withTracking)
             self.activeTracking.append(candidate.trackingRequest)
             self.cancelAllInflight()

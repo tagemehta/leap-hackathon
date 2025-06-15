@@ -5,11 +5,12 @@
 //  Created by Tage Mehta on 6/9/25.
 //
 import AVFoundation
+// Extension to handle photo library access
 import Photos
 import SwiftUI
 import Vision
 
-class DetectionManger {
+class DetectionManager {
   private var mlModel: VNCoreMLModel
   // last processed frame
   private var lastDetections: [VNRecognizedObjectObservation] = []
@@ -18,6 +19,7 @@ class DetectionManger {
   private lazy var visionRequest: VNCoreMLRequest = {
     let request = VNCoreMLRequest(
       model: mlModel
+
     )
     // NOTE: BoundingBoxView object scaling depends on request.imageCropAndScaleOption https://developer.apple.com/documentation/vision/vnimagecropandscaleoption
     request.imageCropAndScaleOption = .scaleFill  // .scaleFit, .scaleFill, .centerCrop
@@ -28,47 +30,13 @@ class DetectionManger {
   }
 
   public func detect(
-    _ pixelBuffer: CMSampleBuffer, _ detectionFilterFn: (VNRecognizedObjectObservation) -> Bool
+    _ sampleBuffer: CMSampleBuffer, _ detectionFilterFn: (VNRecognizedObjectObservation) -> Bool
   ) -> [VNRecognizedObjectObservation] {
     // .up becaue the buffer is being appropriately rotated for orientation changes already
     let handler = VNImageRequestHandler(
-      cmSampleBuffer: pixelBuffer, orientation: .up, options: [:])
+      cmSampleBuffer: sampleBuffer, orientation: .up, options: [:])
     do {
-      // MARK - check input into model
-      //      lazy var visionRequest2: VNCoreMLRequest = {
-      //        do {
-      //          let visionModel = try VNCoreMLModel(for: Image2Image().model)
-      //
-      //          let request = VNCoreMLRequest(
-      //            model: visionModel,
-      //            completionHandler: { request, error in
-      //              if let results = request.results as? [VNPixelBufferObservation],
-      //                let pixelBuffer = results.first?.pixelBuffer
-      //              {
-      //                let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-      //                let context = CIContext()
-      //                if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
-      //                  let uiImage = UIImage(cgImage: cgImage)
-      //                  print("Start")
-      //                  print(uiImage.base64)
-      //                  print("end")
-      //                } else {
-      //                  print("❌ Failed to create CGImage from CIImage")
-      //                }
-      //              } else if let error = error {
-      //                print("❌ Vision request error: \(error.localizedDescription)")
-      //              } else {
-      //                print("❌ No results and no error")
-      //              }
-      //            })
-      //
-      //          request.imageCropAndScaleOption = .scaleFill
-      //          return request
-      //        } catch {
-      //          fatalError("Failed to create VNCoreMLModel: \(error)")
-      //        }
-      //      }()
-      //      try handler.perform([visionRequest2])
+
       try handler.perform([visionRequest])
       guard let results = visionRequest.results as? [VNRecognizedObjectObservation] else {
         return []
@@ -121,29 +89,42 @@ class DetectionManger {
 
     return stableObservations
   }
-  public func findBestOverlap(target: CGRect, candidates: [VNRecognizedObjectObservation])
-    -> VNRecognizedObjectObservation
-  {
-    precondition(!candidates.isEmpty, "candidates array must not be empty")
-    let bestCandidate = candidates.max(
+
+  public func findBestCandidate(
+    from detections: [VNRecognizedObjectObservation], target: CGRect
+  ) -> VNRecognizedObjectObservation? {
+    return detections.max(
       by: { $0.boundingBox.iou(with: target) < $1.boundingBox.iou(with: target) }
     )
-    return bestCandidate!
+  }
+  public func changeInCenter(
+    between first: CGRect, and second: CGRect
+  ) -> Float {
+    let distance = hypotf(
+      Float(first.midX) - Float(second.midX), Float(first.midY) - Float(second.midY))
+    return distance
+  }
+
+  public func changeInArea(
+    between first: CGRect, and second: CGRect
+  ) -> Float {
+    let distance = Float(first.width * first.height) - Float(second.width * second.height)
+    return sqrt(pow(distance, 2))
   }
 
 }
 
 extension CGRect {
   /// Clamps the rectangle's coordinates to be within [0,1] range
-  func clampedToUnitBounds() -> CGRect {
-    let minX = max(0, min(1, self.minX))
-    let minY = max(0, min(1, self.minY))
-    let maxX = max(0, min(1, self.maxX))
-    let maxY = max(0, min(1, self.maxY))
+  func clampedToBounds(_ bounds: CGRect) -> CGRect {
+    let minX = max(bounds.minX, min(bounds.maxX, self.minX))
+    let minY = max(bounds.minY, min(bounds.maxY, self.minY))
+    let maxX = max(bounds.minX, min(bounds.maxX, self.maxX))
+    let maxY = max(bounds.minY, min(bounds.maxY, self.maxY))
 
     // Ensure width and height are not negative
-    let width = max(0, maxX - minX)
-    let height = max(0, maxY - minY)
+    let width = max(bounds.minX, maxX - minX)
+    let height = max(bounds.minY, maxY - minY)
 
     return CGRect(x: minX, y: minY, width: width, height: height)
   }
@@ -156,9 +137,22 @@ extension CGRect {
   }
 }
 
-// Add this extension to save to documents directory
-//extension UIImage {
-//  var base64: String? {
-//    self.jpegData(compressionQuality: 1)?.base64EncodedString()
-//  }
-//}
+extension UIImage {
+  func saveToPhotoLibrary(completion: @escaping (Bool, Error?) -> Void) {
+    PHPhotoLibrary.requestAuthorization { status in
+      guard status == .authorized else {
+        completion(
+          false,
+          NSError(
+            domain: "PhotoLibrary", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "No permission to access photo library"]))
+        return
+      }
+
+      PHPhotoLibrary.shared().performChanges(
+        {
+          PHAssetChangeRequest.creationRequestForAsset(from: self)
+        }, completionHandler: completion)
+    }
+  }
+}

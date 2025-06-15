@@ -10,20 +10,25 @@ import Vision
 
 struct IdentifiedObject: Identifiable, Equatable {
   let id = UUID()
+  var lostInTracking: Int  // Number of frames it's been lost for
   var box: BoundingBox
+
+  // reference types
   var observation: VNRecognizedObjectObservation
   var trackingRequest: VNTrackObjectRequest
-  var lostInTracking: Int  // Number of frames it's been lost for
+  var imageEmbedding: VNFeaturePrintObservation?
   init(
     box: BoundingBox,
     observation: VNRecognizedObjectObservation,
     trackingRequest: VNTrackObjectRequest,
+    imageEmbedding: VNFeaturePrintObservation? = nil,
     lostInTracking: Int = 0
   ) {
     self.box = box
     self.observation = observation
     self.trackingRequest = trackingRequest
     self.lostInTracking = lostInTracking
+    self.imageEmbedding = imageEmbedding
   }
   // Objects that occupy the same space are considered the same
   // WARNING: HARD CODED IOU THRESHOLD
