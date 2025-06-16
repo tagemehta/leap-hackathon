@@ -6,4 +6,5 @@
 - App is not chatty enough
   - It doesn't say searching when it starts searching or found when found
 - Detections aren't as plentiful as in the yolo app. Check the camera configuration
+  - Solved: They are using label confidence and we were using object confidence
 - No unit or integration testing happening

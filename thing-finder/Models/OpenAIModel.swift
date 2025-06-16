@@ -8,10 +8,10 @@ struct ChatCompletionRequest: Encodable {
 
 struct Message: Encodable {
   let role: String
-  let content: [Content]
+  let content: [MessageContent]
 }
 
-struct Content: Encodable {
+struct MessageContent: Encodable {
   let type: String
   let text: String?  // for "text"
   let image_url: [String: String]?  // for "image_url"

@@ -30,13 +30,13 @@ final class LLMVerifier {
     let payload = ChatCompletionRequest(
       model: "gpt-4o",
       messages: [
-        Message(role: "system", content: [Content(text: "You are an AI assistant...")]),
+        Message(role: "system", content: [MessageContent(text: "You are an AI assistant...")]),
         Message(
           role: "user",
           content: [
-            Content(
+            MessageContent(
               text: "Does this image match the following description? \(targetTextDescription)"),
-            Content(imageURL: "data:image/png;base64,\(imageData)"),
+            MessageContent(imageURL: "data:image/png;base64,\(imageData)"),
           ]),
       ],
       tools: [

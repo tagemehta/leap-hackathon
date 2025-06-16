@@ -1,7 +1,5 @@
 import SwiftUI
 
-// Import the SearchMode from the Models module
-
 struct ContentView: View {
   @State private var isCameraRunning = true
   let description: String
@@ -24,7 +22,8 @@ struct ContentView: View {
       descriptionText = description.isEmpty ? "a vehicle" : "a vehicle with \(description)"
     } else {
       descriptionText =
-      description.isEmpty ? "a \(targetClasses[0])" : "\(targetClasses[0]) with description: \(description)"
+        description.isEmpty
+        ? "a \(targetClasses[0])" : "\(targetClasses[0]) with description: \(description)"
     }
 
     _detectionModel = StateObject(
@@ -51,7 +50,7 @@ struct ContentView: View {
         BoundingBoxViewOverlay(
           boxes: $detectionModel.boundingBoxes
         )
-        
+
         // FPS Display
         VStack {
           HStack {
@@ -69,6 +68,9 @@ struct ContentView: View {
       }
     }
     .navigationBarTitle(title, displayMode: .inline)
+    .onRotate { newOrientation in
+      detectionModel.handleOrientationChange()
+    }
   }
 }
 

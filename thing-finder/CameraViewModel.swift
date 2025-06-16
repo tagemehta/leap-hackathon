@@ -2,7 +2,6 @@ import AVFoundation
 import Combine
 import SwiftUI
 import Vision
-import Photos
 
 enum DetectionState: Equatable {
   case searching
@@ -27,7 +26,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
   private let maxFrameTimes = 10  // Number of frames to average FPS over
   private var colors: [String: UIColor] = [:]
 
-  private let CONFIDENCE_FILTER: Float = 0.5
+  private let CONFIDENCE_FILTER: Float = 0.4  // Only tracks if it passes llm so send as many as you want
   private let GPT_DELAY: TimeInterval = 2
   private let targetClasses: [String]  // User Input: Coco classes we are filtering for
   private let targetTextDescription: String  // User Input: Describe what we are looking for
@@ -49,6 +48,8 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
     // Object confidence filter (different from label confidence filter)
     // https://chatgpt.com/share/684eefc5-e14c-8008-916d-622c95448845
     self.detectionManager = DetectionManager(model: mlModel)
+    navigationManager.handle(
+      .start(targetClasses: targetClasses, targetTextDescription: targetTextDescription))
   }
 
   deinit {
@@ -58,13 +59,17 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
     frameTimes.removeAll()
   }
 
+  func handleOrientationChange() {
+    // Reset bufferDims to nil so it will be recalculated on next frame
+    bufferDims = nil
+  }
+
   public func videoCapture(
     _ capture: VideoCapture, didCaptureVideoFrame sampleBuffer: CMSampleBuffer
   ) {
     // Update FPS calculation
     let now = Date()
     frameTimes.append(now)
-
     // Remove timestamps older than 1 second
     frameTimes = frameTimes.filter { now.timeIntervalSince($0) <= 1.0 }
 
@@ -78,17 +83,22 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
         }
       }
     }
+
+    // Store buffer dimensions
     if bufferDims == nil {
       guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
       let frameWidth = Int(CVPixelBufferGetWidth(pixelBuffer))
       let frameHeight = Int(CVPixelBufferGetHeight(pixelBuffer))
       bufferDims = (frameWidth, frameHeight)
     }
+
+    // Perform all tracking requests
     if !activeTracking.isEmpty {
       do {
         try sequenceHandler.perform(activeTracking, on: sampleBuffer)
         activeTracking.removeAll { $0.isLastFrame }
       } catch {
+        clearActiveTracking()
         print("Tracking error: \(error)")
       }
     }
@@ -96,54 +106,63 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
     let allDetections = detectionManager.detect(
       sampleBuffer,
       {
-        targetClasses.contains($0.labels[0].identifier) && $0.labels[0].confidence * $0.confidence > CONFIDENCE_FILTER
-      })
+        targetClasses.contains($0.labels[0].identifier)
+          && $0.labels[0].confidence * $0.confidence > CONFIDENCE_FILTER
+      }
+    )
     // Must appear in 4 consecutive frames
-//    let candidates = detectionManager.stableDetections()
+    //    let candidates = detectionManager.stableDetections()
+
     let candidates = allDetections
+    var identifiedObjects: [IdentifiedObject] = []
+    var frameCGImage: CGImage?
+
+    for candidate in candidates {
+
+      let (imgRect, viewRect) = ImageUtilities.unscaledBoundingBoxes(
+        for:
+          candidate.boundingBox,
+        imageSize: CGSize(width: bufferDims!.width, height: bufferDims!.height),
+        viewSize: capture.previewLayer?.bounds.size ?? .zero)
+      let label = candidate.labels[0].identifier
+      if colors[label] == nil {
+        colors[label] = Constants.ultralyticsColors.randomElement() ?? .blue
+      }
+
+      let box = BoundingBox(
+        imageRect: imgRect,
+        viewRect: viewRect,
+        label: label,
+        color: Color(colors[label]!),
+        alpha: Double(candidate.labels[0].confidence)
+      )
+      frameCGImage =
+        frameCGImage ?? ImageUtilities.cmSampleBuffertoCGImage(buffer: sampleBuffer)
+      // Verify new detections
+      switch detectionState {
+      case .verifying(candidates: _):
+        break
+      default:
+        if verifier.timeSinceLastVerification() > GPT_DELAY {
+          frameCGImage =
+            frameCGImage ?? ImageUtilities.cmSampleBuffertoCGImage(buffer: sampleBuffer)
+          let trackingReq = VNTrackObjectRequest(detectedObjectObservation: candidate)
+          activeTracking.append(trackingReq)
+          let identifiedObject = IdentifiedObject(
+            box: box, observation: candidate, trackingRequest: trackingReq)
+          startVerification(for: identifiedObject, image: frameCGImage!)
+          identifiedObjects.append(identifiedObject)
+        }
+
+      }
+      boundingBoxesLocal.append(box)
+    }
+
+    if case .searching = detectionState {
+      identifiedObjects.count > 0 ? detectionState = .verifying(candidates: identifiedObjects) : ()
+    }
 
     if detectionState.displayAllBoxes {
-      boundingBoxesLocal = []
-      var identifiedObjects: [IdentifiedObject] = []
-      var frameCGImage: CGImage?
-      for candidate in candidates {
-
-        let (imgRect, viewRect) = ImageUtilities.unscaledBoundingBoxes(
-          for:
-            candidate.boundingBox,
-          imageSize: CGSize(width: bufferDims!.width, height: bufferDims!.height),
-          viewSize: capture.previewLayer?.bounds.size ?? .zero)
-        let label = candidate.labels[0].identifier
-        if colors[label] == nil {
-          colors[label] = Constants.ultralyticsColors.randomElement() ?? .blue
-        }
-        
-        let box = BoundingBox(
-          imageRect: imgRect,
-          viewRect: viewRect,
-          label: label,
-          color: Color(colors[label]!),
-          alpha: Double(candidate.labels[0].confidence)
-        )
-        frameCGImage =
-          frameCGImage ?? ImageUtilities.cmSampleBuffertoCGImage(buffer: sampleBuffer)
-        // Verify new detections
-          if detectionState == .searching && verifier.timeSinceLastVerification() > GPT_DELAY {
-            frameCGImage =
-              frameCGImage ?? ImageUtilities.cmSampleBuffertoCGImage(buffer: sampleBuffer)
-            let trackingReq = VNTrackObjectRequest(detectedObjectObservation: candidate)
-            activeTracking.append(trackingReq)
-            let identifiedObject = IdentifiedObject(
-              box: box, observation: candidate, trackingRequest: trackingReq)
-            startVerification(for: identifiedObject, image: frameCGImage!)
-            identifiedObjects.append(identifiedObject)
-          }
-
-        boundingBoxesLocal.append(box)
-      }
-      if identifiedObjects.count > 0 {  // Only runs
-        self.detectionState = .verifying(candidates: identifiedObjects)
-      }
       self.updateBoundingBoxes(to: boundingBoxesLocal)
     }
 
@@ -180,7 +199,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
         if let bestCandidate = detectionManager.findBestCandidate(
           from: allDetections,
           target: observation.boundingBox),
-           observation.boundingBox.iou(with: bestCandidate.boundingBox) > 0.85,
+          observation.boundingBox.iou(with: bestCandidate.boundingBox) > 0.85,
           detectionManager.changeInCenter(
             between: observation.boundingBox, and: bestCandidate.boundingBox
           ) / diagonal < 0.1,
@@ -262,10 +281,6 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
             print("not matched")
           }
         })
-  }
-
-  public func updateBufferDims(width: Int, height: Int) {
-    bufferDims = (width, height)
   }
 
   private func updateBoundingBoxes(to newBoundingBoxes: [BoundingBox]) {

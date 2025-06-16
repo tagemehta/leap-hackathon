@@ -36,7 +36,6 @@ class DetectionManager {
     let handler = VNImageRequestHandler(
       cmSampleBuffer: sampleBuffer, orientation: .up, options: [:])
     do {
-
       try handler.perform([visionRequest])
       guard let results = visionRequest.results as? [VNRecognizedObjectObservation] else {
         return []
