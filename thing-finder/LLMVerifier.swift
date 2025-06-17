@@ -32,13 +32,40 @@ final class LLMVerifier {
     let payload = ChatCompletionRequest(
       model: "gpt-4o",
       messages: [
-        Message(role: "system", content: [MessageContent(text: "You are an AI assistant...")]),
+        Message(
+          role: "system",
+          content: [
+            MessageContent(
+              text:
+                """
+                You are an AI assistant that determines 
+                if the object in the pictured image matches the description.
+                Respond strictly in JSON format as per the provided schema.
+                You are doing this for a blind audience in an app that helps them navigate to objects.
+                Accuracy is mission critical.
+
+                Example: Does this image, focusing on a car, match the following description? Silver honda crv with license plate 123456789.
+                if the image matches the description, return {"match": true, "confidence": (you determine)}
+                if the image contains a different model or color of car, return {"match": false, "confidence": (you determine)}
+                if the license plate does not match, return {"match": false, "confidence": (you determine)}
+
+                Example: Does this image of a black jeep wrangler match the following description? A black jeep wrangler
+                if the image matches the description, return {"match": true, "confidence": (you determine)}
+                if the image contains a different model or color of jeep, return {"match": false, "confidence": (you determine)}
+
+                Example: Does this image focusing on a bottle, match the following description? White and red tylenol bottle
+                if the image matches the description, return {"match": true, "confidence": (you determine)}
+                if the image contains a bottle of advil, return {"match": false, "confidence": (you determine)}
+
+                """
+            )
+          ]),
         Message(
           role: "user",
           content: [
             MessageContent(
               text:
-                "Does this image, focusing on \(targetClasses.joined(separator: ", or")), match the following description? \(targetTextDescription)"
+                "Does this image, focusing on \(targetClasses.joined(separator: ", or ")), match the following description? \(targetTextDescription)"
             ),
             MessageContent(imageURL: "data:image/png;base64,\(imageData)"),
           ]),
@@ -69,7 +96,14 @@ final class LLMVerifier {
       return Fail(error: error).eraseToAnyPublisher()
     }
     return URLSession.shared.dataTaskPublisher(for: request)
-      .tryMap(\.data)
+      .tryMap { data, response in
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+          print("Error: Received HTTP status code \(httpResponse.statusCode)")
+        } else {
+          print("Response: \(response)")
+        }
+        return data
+      }
       .decode(type: ChatCompletionResponse.self, decoder: jsonDecoder)
       .tryMap { [weak self] response in
 
