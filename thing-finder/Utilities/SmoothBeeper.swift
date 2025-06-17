@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import SwiftUI
 
 /// A simplified, beat-preserving beeper.
 ///
@@ -8,6 +9,8 @@ import Foundation
 /// • Easy to understand – play → schedule next, only five core vars.
 /// • Ready for change   – all timing contained in `scheduleNextBeep()`.
 final class SmoothBeeper {
+    // Settings for configurable parameters
+    private let settings: Settings
   // MARK: – Public configuration
   private let alpha: Double = 0.2  // Smoothing factor for EMA
   private let minInterval: TimeInterval = 0.1
@@ -18,10 +21,14 @@ final class SmoothBeeper {
   private var lastBeepTime: Date = .distantPast
   private var currentInterval: TimeInterval = 0.5
   private var targetInterval: TimeInterval = 0.5
+  private var smoothedInterval: TimeInterval = 1.0
+  private var volume: Float = 0.5
+  private var isBeeping = false
   private var wasPlayingBeforeBackground = false
 
   // MARK: – Init / Deinit
-  init() {
+  init(settings: Settings = Settings()) {
+    self.settings = settings
     // Prepare click sound once.
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("beep.wav")
     self.soundURL = url
@@ -62,11 +69,12 @@ final class SmoothBeeper {
   /// Begin beeping at the supplied interval.
   func start(interval: TimeInterval) {
     stop()  // Clean slate
-    currentInterval = max(minInterval, interval)
-    targetInterval = currentInterval
+    // Smooth the interval using exponential moving average based on settings
+    targetInterval = max(minInterval, interval)
+    smoothedInterval = settings.smoothingAlpha * targetInterval + (1 - settings.smoothingAlpha) * smoothedInterval
     lastBeepTime = Date()
     playBeep()  // Play immediately
-    scheduleNextBeep(after: currentInterval)
+    scheduleNextBeep(after: smoothedInterval)
   }
 
   /// Stop any ongoing beeps.

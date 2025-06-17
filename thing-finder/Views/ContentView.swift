@@ -16,11 +16,11 @@ struct ContentView: View {
     self.description = description
     self.searchMode = searchMode
     self.targetClasses = targetClasses
-
     _detectionModel = StateObject(
       wrappedValue: CameraViewModel(
         targetClasses: targetClasses,
-        targetTextDescription: description
+        targetTextDescription: description,
+        settings: Settings()
       )
     )
   }
@@ -67,6 +67,7 @@ struct ContentView: View {
 
 #Preview {
   NavigationView {
-    ContentView(description: "wearing a red shirt", searchMode: .objectFinder, targetClasses: ["person"])
+    ContentView(
+      description: "wearing a red shirt", searchMode: .objectFinder, targetClasses: ["person"])
   }
 }

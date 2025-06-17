@@ -1,19 +1,15 @@
 //
-//  DetectionManager.swift
+//  NavigationManager.swift
 //  thing-finder
 //
 //  Created by Tage Mehta on 6/12/25.
 //
 
 import AVFoundation
+import CoreHaptics
 import Foundation
 import Vision
 
-enum Direction: String, Equatable {
-  case right = "on your right"
-  case left = "on your left"
-  case center = "straight ahead"
-}
 enum NavEvent {
   case start(targetClasses: [String], targetTextDescription: String)
   case searching
@@ -23,11 +19,17 @@ enum NavEvent {
   case expired
 }
 class NavigationManager {
+  // Settings for configurable parameters
+  private let settings: Settings
   var lastDirection: Direction?
   var timeLastSpoken = Date()
   let speaker = Speaker()
   private let beeper = SmoothBeeper()
   private var currentInterval: TimeInterval?
+
+  init(settings: Settings = Settings()) {
+    self.settings = settings
+  }
   func handle(
     _ event: NavEvent,
     box: BoundingBox? = nil,
@@ -43,7 +45,7 @@ class NavigationManager {
       timeLastSpoken = Date()
       break
     case .searching:
-      if Date().timeIntervalSince(timeLastSpoken) > 4 {
+      if Date().timeIntervalSince(timeLastSpoken) > settings.speechRepeatInterval {
         speaker.speak(text: "Searching")
         timeLastSpoken = Date()
       }
@@ -76,18 +78,16 @@ class NavigationManager {
     }
   }
 
-  private func navigate(to box: BoundingBox, in imageSpace: (width: Int, height: Int), distanceMeters: Double?) {
+  private func navigate(
+    to box: BoundingBox, in imageSpace: (width: Int, height: Int), distanceMeters: Double?
+  ) {
     let midx = box.imageRect.midX / CGFloat(imageSpace.width)
 
     // Calculate distance from center (0.0 to 0.5)
     let distanceFromCenter = abs(midx - 0.5)
 
-    // Use quadratic formula for interval calculation
-    // Square the distance for quadratic effect (slower as it gets closer)
-    // Base interval is now 0.2s (slower overall) up to 1.1s at edges
-    let normalizedDistance = 1.0 - (distanceFromCenter * 2)  // 1.0 when centered, 0.0 at edges
-    let quadraticFactor = normalizedDistance * normalizedDistance  // Quadratic effect
-    let newInterval = 0.1 + (0.9 * (1.0 - quadraticFactor))  // 0.1s when centered, up to 1s at edges
+    // Calculate interval based on settings and distance from center
+    let newInterval = settings.calculateBeepInterval(distanceFromCenter: distanceFromCenter)
 
     // Smooth transition between intervals
     if currentInterval == nil {
@@ -100,34 +100,26 @@ class NavigationManager {
     }
 
     // ---------------- Volume with distance ------------------
-    if let dist = distanceMeters {
-      // Map 0.2 m – 3 m → volume 1.0 → 0.2 (closer = louder)
-      let clamped = max(0.2, min(3.0, dist))
-      let norm = 1.0 - ((clamped - 0.2) / (3.0 - 0.2))
-      let volume = 0.2 + 0.8 * norm
+    if let dist = distanceMeters, settings.enableAudio {
+      let volume = settings.mapDistanceToVolume(dist)
       beeper.updateVolume(to: volume)
     }
 
     // Continue with existing direction-based speech
-    var newDirection: Direction
-    // Split screen into thirds navigate by object midpoint
-    if midx < 0.33 {
-      newDirection = .left
-    } else if midx > 0.66 {
-      newDirection = .right
-    } else {
-      newDirection = .center
-    }
+    let newDirection = settings.getDirection(normalizedX: midx)
 
     let timePassed = Date().timeIntervalSince(timeLastSpoken)
-    if newDirection == lastDirection && timePassed > 4 {
+    if !settings.enableSpeech {
+      // Skip speech if disabled
+      lastDirection = newDirection
+    } else if newDirection == lastDirection && timePassed > settings.speechRepeatInterval {
       timeLastSpoken = Date()
       lastDirection = newDirection
-      speaker.speak(text: "Still " + newDirection.rawValue)
-    } else if newDirection != lastDirection && timePassed > 2 {
+      speaker.speak(text: "Still " + newDirection.rawValue, rate: Float(settings.speechRate))
+    } else if newDirection != lastDirection && timePassed > settings.speechChangeInterval {
       timeLastSpoken = Date()
       lastDirection = newDirection
-      speaker.speak(text: newDirection.rawValue)
+      speaker.speak(text: newDirection.rawValue, rate: Float(settings.speechRate))
     }
   }
 }

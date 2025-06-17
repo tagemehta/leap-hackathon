@@ -17,6 +17,8 @@ enum DetectionState: Equatable {
 }
 
 class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
+  // Settings for configurable parameters
+  private let settings: Settings
 
   @MainActor @Published var boundingBoxes: [BoundingBox] = []
   @Published private(set) var currentFPS: Double = 0.0
@@ -27,13 +29,13 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
   private var colors: [String: UIColor] = [:]
 
   private let CONFIDENCE_FILTER: Float = 0.4  // Only tracks if it passes llm so send as many as you want
-  private let GPT_DELAY: TimeInterval = 2
   private let targetClasses: [String]  // User Input: Coco classes we are filtering for
   private let targetTextDescription: String  // User Input: Describe what we are looking for
   private var bufferDims: (width: Int, height: Int)?
 
   private var detectionManager: DetectionManager
-  private var navigationManager = NavigationManager()
+  private var navigationManager: NavigationManager
+
   // Most recent depth frame from LiDAR or stereo camera.
   private var latestDepthData: AVDepthData?
   private var verifier: LLMVerifier
@@ -41,16 +43,16 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
   private var sequenceHandler = VNSequenceRequestHandler()
   private var activeTracking: [VNTrackObjectRequest] = []
 
-  init(targetClasses: [String], targetTextDescription: String) {
+  init(targetClasses: [String], targetTextDescription: String, settings: Settings) {
     self.targetClasses = targetClasses
     self.targetTextDescription = targetTextDescription
     self.verifier = LLMVerifier(
       targetClasses: targetClasses, targetTextDescription: targetTextDescription)
     let mlModel = try! VNCoreMLModel(for: yolo11n(configuration: .init()).model)
-    mlModel.featureProvider = ThresholdProvider(iouThreshold: 0.45, confidenceThreshold: 0.40)
-    // Object confidence filter (different from label confidence filter)
-    // https://chatgpt.com/share/684eefc5-e14c-8008-916d-622c95448845
+    mlModel.featureProvider = ThresholdProvider(iouThreshold: 0.45, confidenceThreshold: 0.25)
+    self.settings = settings
     self.detectionManager = DetectionManager(model: mlModel)
+    self.navigationManager = NavigationManager(settings: settings)
     navigationManager.handle(
       .start(targetClasses: targetClasses, targetTextDescription: targetTextDescription))
   }
@@ -90,7 +92,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
     }
 
     // Store buffer dimensions
-    guard let bufferDims = bufferDims else { // Orientation changed skip a frame to fix buffer size
+    guard let bufferDims = bufferDims else {  // Orientation changed skip a frame to fix buffer size
       let frameWidth = Int(CVPixelBufferGetWidth(imageBuffer))
       let frameHeight = Int(CVPixelBufferGetHeight(imageBuffer))
       bufferDims = (frameWidth, frameHeight)
@@ -113,7 +115,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
       imageBuffer,
       {
         targetClasses.contains($0.labels[0].identifier)
-          && $0.labels[0].confidence * $0.confidence > CONFIDENCE_FILTER
+          && $0.labels[0].confidence * $0.confidence > Float(settings.confidenceThreshold)
       }
     )
     // Must appear in 4 consecutive frames
@@ -147,9 +149,9 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
       // of verification so the tracker stays locked on the current object.
       switch detectionState {
       case .searching:
-        if verifier.timeSinceLastVerification() > GPT_DELAY {
+        if verifier.timeSinceLastVerification() > settings.verificationCooldown {
           frameCGImage =
-          frameCGImage ?? ImageUtilities.cvPixelBuffertoCGImage(buffer: imageBuffer)
+            frameCGImage ?? ImageUtilities.cvPixelBuffertoCGImage(buffer: imageBuffer)
           let trackingReq = VNTrackObjectRequest(detectedObjectObservation: candidate)
           activeTracking.append(trackingReq)
           let identifiedObject = IdentifiedObject(
@@ -177,11 +179,11 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
       guard let observation = target.trackingRequest.results?.first as? VNDetectedObjectObservation,
         target.lifetime < 700
       else {
-        if target.lifetime >= 700 {
+        if target.lifetime >= settings.targetLifetime {
           navigationManager.handle(NavEvent.expired)
           self.detectionState = .searching
           self.clearActiveTracking()
-        } else if target.lostInTracking > 4 {
+        } else if target.lostInTracking > settings.maxLostFrames {
           navigationManager.handle(NavEvent.lost)
           self.detectionState = .searching
           self.clearActiveTracking()
@@ -210,12 +212,15 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
 
       let normalizedBox = observation.boundingBox
       var drifted = false
-      if iouPrev < 0.4 || centreShift > 0.25 || areaShift > 0.35 || observation.confidence < 0.25 {
+      if iouPrev < settings.minIouThreshold || centreShift > Float(settings.maxCenterShift)
+        || areaShift > Float(settings.maxAreaShift)
+        || observation.confidence < Float(settings.minTrackingConfidence)
+      {
         drifted = true
       }
 
       if drifted {
-        if target.lostInTracking >= 4 {
+        if target.lostInTracking >= settings.maxLostFrames {
           navigationManager.handle(NavEvent.lost)
           self.detectionState = .searching
           self.clearActiveTracking()
