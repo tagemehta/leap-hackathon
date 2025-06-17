@@ -86,6 +86,7 @@ struct InputView: View {
           }
           .frame(maxWidth: .infinity, alignment: .center)
           .buttonStyle(.borderedProminent)
+          .disabled(description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
       }
       .navigationTitle("Find My Thing")

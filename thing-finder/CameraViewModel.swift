@@ -42,7 +42,8 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
   init(targetClasses: [String], targetTextDescription: String) {
     self.targetClasses = targetClasses
     self.targetTextDescription = targetTextDescription
-    self.verifier = LLMVerifier(targetTextDescription: targetTextDescription)
+    self.verifier = LLMVerifier(
+      targetClasses: targetClasses, targetTextDescription: targetTextDescription)
     let mlModel = try! VNCoreMLModel(for: yolo11n(configuration: .init()).model)
     mlModel.featureProvider = ThresholdProvider(iouThreshold: 0.45, confidenceThreshold: 0.40)
     // Object confidence filter (different from label confidence filter)
@@ -99,6 +100,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
         activeTracking.removeAll { $0.isLastFrame }
       } catch {
         clearActiveTracking()
+        activeTracking.removeAll { $0.isLastFrame }
         print("Tracking error: \(error)")
       }
     }
@@ -118,7 +120,6 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
     var frameCGImage: CGImage?
 
     for candidate in candidates {
-
       let (imgRect, viewRect) = ImageUtilities.unscaledBoundingBoxes(
         for:
           candidate.boundingBox,
@@ -139,10 +140,11 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
       frameCGImage =
         frameCGImage ?? ImageUtilities.cmSampleBuffertoCGImage(buffer: sampleBuffer)
       // Verify new detections
+      // Only verify new detections when we are actively searching. If we are already
+      // verifying or have a confirmed (found) target, skip starting another round
+      // of verification so the tracker stays locked on the current object.
       switch detectionState {
-      case .verifying(candidates: _):
-        break
-      default:
+      case .searching:
         if verifier.timeSinceLastVerification() > GPT_DELAY {
           frameCGImage =
             frameCGImage ?? ImageUtilities.cmSampleBuffertoCGImage(buffer: sampleBuffer)
@@ -153,7 +155,8 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
           startVerification(for: identifiedObject, image: frameCGImage!)
           identifiedObjects.append(identifiedObject)
         }
-
+      default:
+        break
       }
       boundingBoxesLocal.append(box)
     }
@@ -167,60 +170,64 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
     }
 
     if case .found(let target) = self.detectionState {
-      // Track one object
-      guard let observation = target.trackingRequest.results?.first as? VNDetectedObjectObservation
+      var targetMut = target
+      targetMut.lifetime += 1
+      guard let observation = target.trackingRequest.results?.first as? VNDetectedObjectObservation,
+        target.lifetime < 700
       else {
-        // Lost in tracking for 5 frames
-        if target.lostInTracking > 4 {
+        if target.lifetime >= 700 {
+          navigationManager.handle(NavEvent.expired)
+          self.detectionState = .searching
+          self.clearActiveTracking()
+        } else if target.lostInTracking > 4 {
           navigationManager.handle(NavEvent.lost)
           self.detectionState = .searching
           self.clearActiveTracking()
         } else {
-          self.detectionState = .found(
-            target: IdentifiedObject(
-              box: BoundingBox(
-                imageRect: target.box.imageRect,
-                viewRect: target.box.viewRect,
-                label: target.box.label + "?",
-                color: target.box.color,
-                alpha: target.box.alpha),
-              observation: target.observation,
-              trackingRequest: target.trackingRequest,
-              lostInTracking: target.lostInTracking + 1))
+          targetMut.box.label += "?"
+          targetMut.lostInTracking += 1
+          self.detectionState = .found(target: targetMut)
         }
         return
       }
 
-      // If there is a detection with good iou, relatively similar area and position of center then track that instead.
-      // Meant to prevent the decaying of the tracking box but not allowing it to jump to a new object
-      let obsArea = Float(observation.boundingBox.width * observation.boundingBox.height)
-      let diagonal = Float(hypot(observation.boundingBox.width, observation.boundingBox.height))
-      if allDetections.count > 0 {  // significantly different tracking box, replace it with the best closest box
-        if let bestCandidate = detectionManager.findBestCandidate(
-          from: allDetections,
-          target: observation.boundingBox),
-          observation.boundingBox.iou(with: bestCandidate.boundingBox) > 0.85,
-          detectionManager.changeInCenter(
-            between: observation.boundingBox, and: bestCandidate.boundingBox
-          ) / diagonal < 0.1,
-          detectionManager.changeInArea(
-            between: observation.boundingBox, and: bestCandidate.boundingBox) / obsArea < 0.1
-        {
-
-          self.clearActiveTracking()
-          let newTrackingReq = VNTrackObjectRequest(detectedObjectObservation: bestCandidate)
-          newTrackingReq.trackingLevel = .accurate
-          let newIdObj = IdentifiedObject(
-            box: target.box,
-            observation: bestCandidate,
-            trackingRequest: newTrackingReq
-          )
-          self.detectionState = .found(target: newIdObj)
-          self.activeTracking.append(newTrackingReq)
-        }
-      }
+      // -------------------------------------------------------------
+      // 1. Early-exit if Vision’s current box clearly doesn’t match the
+      //    box from the previous frame (stored in lastBoundingBox).
+      // -------------------------------------------------------------
+      let prevBox = target.lastBoundingBox ?? observation.boundingBox
+      let iouPrev = prevBox.iou(with: observation.boundingBox)
+      let diagonal = Float(hypot(prevBox.width, prevBox.height))
+      let centreShift =
+        detectionManager.changeInCenter(
+          between: prevBox, and: observation.boundingBox) / diagonal
+      let areaPrev = Float(prevBox.width * prevBox.height)
+      let areaShift =
+        detectionManager.changeInArea(
+          between: prevBox, and: observation.boundingBox) / areaPrev
 
       let normalizedBox = observation.boundingBox
+      var drifted = false
+      if iouPrev < 0.4 || centreShift > 0.25 || areaShift > 0.35 || observation.confidence < 0.25 {
+        drifted = true
+      }
+
+      if drifted {
+        if target.lostInTracking >= 4 {
+          navigationManager.handle(NavEvent.lost)
+          self.detectionState = .searching
+          self.clearActiveTracking()
+        } else {
+          targetMut.box.label += "?"
+          targetMut.lostInTracking += 1
+          self.detectionState = .found(target: targetMut)
+        }
+        return
+      }
+
+      // Update history for next frame
+      targetMut.lastBoundingBox = observation.boundingBox
+
       let (imgRect, viewRect) = ImageUtilities.unscaledBoundingBoxes(
         for: normalizedBox,
         imageSize: CGSize(width: bufferDims!.width, height: bufferDims!.height),
@@ -233,6 +240,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
         alpha: Double(observation.confidence))
       self.updateBoundingBoxes(to: [box])
       navigationManager.handle(NavEvent.found, box: box, in: bufferDims!)
+      self.detectionState = .found(target: targetMut)
     }
   }
 
@@ -258,6 +266,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
           print("llm error: \(comp)")
           guard let self = self else { return }
           self.inflight.removeValue(forKey: candidate.id)
+          candidate.trackingRequest.isLastFrame = true
           if self.inflight.isEmpty {
             // Redundancy because if it's the last one and being called then it wasn't found
             if case .verifying = self.detectionState {

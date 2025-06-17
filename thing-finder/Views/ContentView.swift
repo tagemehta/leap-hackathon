@@ -9,27 +9,18 @@ struct ContentView: View {
   @StateObject private var detectionModel: CameraViewModel
 
   init(
-    description: String = "",
-    searchMode: SearchMode = .objectFinder,
-    targetClasses: [String] = ["person"]
+    description: String,
+    searchMode: SearchMode,
+    targetClasses: [String]
   ) {
     self.description = description
     self.searchMode = searchMode
     self.targetClasses = targetClasses
 
-    let descriptionText: String
-    if searchMode == .uberFinder {
-      descriptionText = description.isEmpty ? "a vehicle" : "a vehicle with \(description)"
-    } else {
-      descriptionText =
-        description.isEmpty
-        ? "a \(targetClasses[0])" : "\(targetClasses[0]) with description: \(description)"
-    }
-
     _detectionModel = StateObject(
       wrappedValue: CameraViewModel(
         targetClasses: targetClasses,
-        targetTextDescription: descriptionText
+        targetTextDescription: description
       )
     )
   }
@@ -76,6 +67,6 @@ struct ContentView: View {
 
 #Preview {
   NavigationView {
-    ContentView(description: "wearing a red shirt", targetClasses: ["person"])
+    ContentView(description: "wearing a red shirt", searchMode: .objectFinder, targetClasses: ["person"])
   }
 }

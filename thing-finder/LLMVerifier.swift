@@ -15,9 +15,11 @@ final class LLMVerifier {
   }()
   private let apiKey = Bundle.main.infoDictionary!["OPENAI_API"] as! String
 
+  let targetClasses: [String]
   let targetTextDescription: String
 
-  init(targetTextDescription: String) {
+  init(targetClasses: [String], targetTextDescription: String) {
+    self.targetClasses = targetClasses
     self.targetTextDescription = targetTextDescription
   }
 
@@ -35,7 +37,9 @@ final class LLMVerifier {
           role: "user",
           content: [
             MessageContent(
-              text: "Does this image match the following description? \(targetTextDescription)"),
+              text:
+                "Does this image, focusing on \(targetClasses.joined(separator: ", or")), match the following description? \(targetTextDescription)"
+            ),
             MessageContent(imageURL: "data:image/png;base64,\(imageData)"),
           ]),
       ],
@@ -59,53 +63,6 @@ final class LLMVerifier {
       max_tokens: 50
     )
 
-    // let requestBody = ChatCompletionRequest(
-    //   model: "gpt-4o",
-    //   messages: [
-    //     Message(
-    //       role: "system",
-    //       content: [
-    //         .text(
-    //           """
-    //           You are an AI assistant that determines if an object in an image matches the given description.
-    //           Matching to high accuracy is mission critical as the app is assistive technology for blind users.
-    //           Respond strictly in JSON format as per the provided schema.
-    //           """)
-    //       ]
-    //     ),
-    //     Message(
-    //       role: "user",
-    //       content: [
-    //         .text(
-    //           "Does this image contain an object that matches the following description? \(targetTextDescription)"
-    //         ),
-    //         .image_url(ImageURL(url: "data:image/png;base64,\(imageData)")),
-    //       ]
-    //     ),
-    //   ],
-    //   responseFormat: ResponseFormat(
-    //     type: "json_schema",
-    //     jsonSchema: JsonSchema(
-    //       name: "object_match_result",
-    //       schema: Schema(
-    //         type: "object",
-    //         properties: [
-    //           "match": Property(
-    //             type: "boolean",
-    //             description: "Indicates if the image contains the specified object."),
-    //           "confidence": Property(
-    //             type: "number", description: "Confidence level of the match (0.0 to 1.0)."),
-    //         ],
-    //         required: ["match", "confidence"],
-    //         additionalProperties: false
-    //       ),
-    //       strict: true
-    //     ),
-    //     strict: true
-    //   ),
-    //   maxTokens: 50
-    // )
-
     do {
       request.httpBody = try jsonEncoder.encode(payload)
     } catch {
@@ -126,7 +83,7 @@ final class LLMVerifier {
       }
       .eraseToAnyPublisher()
   }
-  
+
   public func timeSinceLastVerification() -> TimeInterval {
     return Date().timeIntervalSince(lastVerifiedDate)
   }
