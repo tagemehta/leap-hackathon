@@ -30,11 +30,11 @@ class DetectionManager {
   }
 
   public func detect(
-    _ sampleBuffer: CMSampleBuffer, _ detectionFilterFn: (VNRecognizedObjectObservation) -> Bool
+    _ imageBuffer: CVPixelBuffer, _ detectionFilterFn: (VNRecognizedObjectObservation) -> Bool
   ) -> [VNRecognizedObjectObservation] {
     // .up becaue the buffer is being appropriately rotated for orientation changes already
     let handler = VNImageRequestHandler(
-      cmSampleBuffer: sampleBuffer, orientation: .up, options: [:])
+      cvPixelBuffer: imageBuffer, orientation: .up, options: [:])
     do {
       try handler.perform([visionRequest])
       guard let results = visionRequest.results as? [VNRecognizedObjectObservation] else {

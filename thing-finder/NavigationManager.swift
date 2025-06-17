@@ -29,7 +29,10 @@ class NavigationManager {
   private let beeper = SmoothBeeper()
   private var currentInterval: TimeInterval?
   func handle(
-    _ event: NavEvent, box: BoundingBox? = nil, in imageSpace: (width: Int, height: Int)? = nil
+    _ event: NavEvent,
+    box: BoundingBox? = nil,
+    in imageSpace: (width: Int, height: Int)? = nil,
+    distanceMeters: Double? = nil
   ) {
     switch event {
     case .start(let targetClasses, let targetTextDescription):
@@ -65,7 +68,7 @@ class NavigationManager {
       break
     case .found:
       if let box = box, let imageSpace = imageSpace {
-        navigate(to: box, in: imageSpace)
+        navigate(to: box, in: imageSpace, distanceMeters: distanceMeters)
       } else {
         beeper.stop()
         currentInterval = nil
@@ -73,7 +76,7 @@ class NavigationManager {
     }
   }
 
-  private func navigate(to box: BoundingBox, in imageSpace: (width: Int, height: Int)) {
+  private func navigate(to box: BoundingBox, in imageSpace: (width: Int, height: Int), distanceMeters: Double?) {
     let midx = box.imageRect.midX / CGFloat(imageSpace.width)
 
     // Calculate distance from center (0.0 to 0.5)
@@ -94,6 +97,15 @@ class NavigationManager {
     } else {
       beeper.updateInterval(to: newInterval, smoothly: true)
       currentInterval = newInterval
+    }
+
+    // ---------------- Volume with distance ------------------
+    if let dist = distanceMeters {
+      // Map 0.2 m – 3 m → volume 1.0 → 0.2 (closer = louder)
+      let clamped = max(0.2, min(3.0, dist))
+      let norm = 1.0 - ((clamped - 0.2) / (3.0 - 0.2))
+      let volume = 0.2 + 0.8 * norm
+      beeper.updateVolume(to: volume)
     }
 
     // Continue with existing direction-based speech

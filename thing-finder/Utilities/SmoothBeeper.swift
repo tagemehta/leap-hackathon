@@ -18,6 +18,7 @@ final class SmoothBeeper {
   private var lastBeepTime: Date = .distantPast
   private var currentInterval: TimeInterval = 0.5
   private var targetInterval: TimeInterval = 0.5
+  private var wasPlayingBeforeBackground = false
 
   // MARK: – Init / Deinit
   init() {
@@ -26,11 +27,38 @@ final class SmoothBeeper {
     self.soundURL = url
     configureAudioSession()
     generateClickSound()
+    
+    // Add observers for app lifecycle
+    #if os(iOS)
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleAppDidEnterBackground),
+      name: UIApplication.didEnterBackgroundNotification,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleWillEnterForeground),
+      name: UIApplication.willEnterForegroundNotification,
+      object: nil
+    )
+    #endif
   }
 
-  deinit { stop() }
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+    stop()
+    #if os(iOS)
+    try? AVAudioSession.sharedInstance().setActive(false)
+    #endif
+  }
 
   // MARK: – Public API
+  /// Dynamically adjust the output volume (0.0 – 1.0).
+  func updateVolume(to newVolume: Double) {
+    let clamped = max(0.0, min(1.0, newVolume))
+    player?.volume = Float(clamped)
+  }
   /// Begin beeping at the supplied interval.
   func start(interval: TimeInterval) {
     stop()  // Clean slate
@@ -99,9 +127,25 @@ final class SmoothBeeper {
   private func configureAudioSession() {
     #if os(iOS)
       let session = AVAudioSession.sharedInstance()
-      try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-      try? session.setActive(true)
+      do {
+        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .duckOthers])
+        try session.setActive(true, options: .notifyOthersOnDeactivation)
+      } catch {
+        print("Failed to configure audio session: \(error)")
+      }
     #endif
+  }
+  
+  @objc private func handleAppDidEnterBackground() {
+    wasPlayingBeforeBackground = (timer != nil)
+    stop()
+  }
+  
+  @objc private func handleWillEnterForeground() {
+    if wasPlayingBeforeBackground {
+      // Restart with the same interval
+      start(interval: targetInterval)
+    }
   }
 
   private func generateClickSound() {

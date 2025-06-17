@@ -96,14 +96,7 @@ final class LLMVerifier {
       return Fail(error: error).eraseToAnyPublisher()
     }
     return URLSession.shared.dataTaskPublisher(for: request)
-      .tryMap { data, response in
-        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-          print("Error: Received HTTP status code \(httpResponse.statusCode)")
-        } else {
-          print("Response: \(response)")
-        }
-        return data
-      }
+      .tryMap(\.data)
       .decode(type: ChatCompletionResponse.self, decoder: jsonDecoder)
       .tryMap { [weak self] response in
 

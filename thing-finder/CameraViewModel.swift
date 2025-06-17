@@ -34,6 +34,8 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
 
   private var detectionManager: DetectionManager
   private var navigationManager = NavigationManager()
+  // Most recent depth frame from LiDAR or stereo camera.
+  private var latestDepthData: AVDepthData?
   private var verifier: LLMVerifier
   private var inflight: [UUID: AnyCancellable] = [:]  // candidate.id ⇒ cancellable
   private var sequenceHandler = VNSequenceRequestHandler()
@@ -64,9 +66,11 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
     // Reset bufferDims to nil so it will be recalculated on next frame
     bufferDims = nil
   }
-
-  public func videoCapture(
-    _ capture: VideoCapture, didCaptureVideoFrame sampleBuffer: CMSampleBuffer
+  // MARK: - VideoCaptureDelegate
+  public func onNewData(
+    _ capture: VideoCapture,
+    imageBuffer: CVPixelBuffer,
+    depthData: AVDepthData?
   ) {
     // Update FPS calculation
     let now = Date()
@@ -86,17 +90,17 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
     }
 
     // Store buffer dimensions
-    if bufferDims == nil {
-      guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-      let frameWidth = Int(CVPixelBufferGetWidth(pixelBuffer))
-      let frameHeight = Int(CVPixelBufferGetHeight(pixelBuffer))
+    guard let bufferDims = bufferDims else { // Orientation changed skip a frame to fix buffer size
+      let frameWidth = Int(CVPixelBufferGetWidth(imageBuffer))
+      let frameHeight = Int(CVPixelBufferGetHeight(imageBuffer))
       bufferDims = (frameWidth, frameHeight)
+      return
     }
 
     // Perform all tracking requests
     if !activeTracking.isEmpty {
       do {
-        try sequenceHandler.perform(activeTracking, on: sampleBuffer)
+        try sequenceHandler.perform(activeTracking, on: imageBuffer)
         activeTracking.removeAll { $0.isLastFrame }
       } catch {
         clearActiveTracking()
@@ -106,7 +110,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
     }
     var boundingBoxesLocal: [BoundingBox] = []
     let allDetections = detectionManager.detect(
-      sampleBuffer,
+      imageBuffer,
       {
         targetClasses.contains($0.labels[0].identifier)
           && $0.labels[0].confidence * $0.confidence > CONFIDENCE_FILTER
@@ -123,7 +127,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
       let (imgRect, viewRect) = ImageUtilities.unscaledBoundingBoxes(
         for:
           candidate.boundingBox,
-        imageSize: CGSize(width: bufferDims!.width, height: bufferDims!.height),
+        imageSize: CGSize(width: bufferDims.width, height: bufferDims.height),
         viewSize: capture.previewLayer?.bounds.size ?? .zero)
       let label = candidate.labels[0].identifier
       if colors[label] == nil {
@@ -137,8 +141,6 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
         color: Color(colors[label]!),
         alpha: Double(candidate.labels[0].confidence)
       )
-      frameCGImage =
-        frameCGImage ?? ImageUtilities.cmSampleBuffertoCGImage(buffer: sampleBuffer)
       // Verify new detections
       // Only verify new detections when we are actively searching. If we are already
       // verifying or have a confirmed (found) target, skip starting another round
@@ -147,7 +149,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
       case .searching:
         if verifier.timeSinceLastVerification() > GPT_DELAY {
           frameCGImage =
-            frameCGImage ?? ImageUtilities.cmSampleBuffertoCGImage(buffer: sampleBuffer)
+          frameCGImage ?? ImageUtilities.cvPixelBuffertoCGImage(buffer: imageBuffer)
           let trackingReq = VNTrackObjectRequest(detectedObjectObservation: candidate)
           activeTracking.append(trackingReq)
           let identifiedObject = IdentifiedObject(
@@ -230,7 +232,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
 
       let (imgRect, viewRect) = ImageUtilities.unscaledBoundingBoxes(
         for: normalizedBox,
-        imageSize: CGSize(width: bufferDims!.width, height: bufferDims!.height),
+        imageSize: CGSize(width: bufferDims.width, height: bufferDims.height),
         viewSize: capture.previewLayer?.bounds.size ?? .zero)
       let box = BoundingBox(
         imageRect: imgRect,
@@ -239,7 +241,30 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
         color: .red,
         alpha: Double(observation.confidence))
       self.updateBoundingBoxes(to: [box])
-      navigationManager.handle(NavEvent.found, box: box, in: bufferDims!)
+      // --------------------------------------------------------
+      // Distance estimation via latestDepthData (if present)
+      // --------------------------------------------------------
+      var distanceMeters: Double? = nil
+      if let depthData = depthData {
+        let depth = depthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)
+        let depthBuf = depth.depthDataMap
+        CVPixelBufferLockBaseAddress(depthBuf, .readOnly)
+        let w = CVPixelBufferGetWidth(depthBuf)
+        let h = CVPixelBufferGetHeight(depthBuf)
+        let centerX = Int(min(max(0, Int(normalizedBox.midX * CGFloat(w))), w - 1))
+        let centerY = Int(min(max(0, Int((1 - normalizedBox.midY) * CGFloat(h))), h - 1))
+        if let base = CVPixelBufferGetBaseAddress(depthBuf) {
+          let rowBytes = CVPixelBufferGetBytesPerRow(depthBuf)
+          let ptr = base.advanced(by: centerY * rowBytes + centerX * MemoryLayout<Float32>.size)
+          let val = ptr.load(as: Float32.self)
+          if val.isFinite && val > 0 {
+            distanceMeters = Double(val)
+          }
+        }
+        CVPixelBufferUnlockBaseAddress(depthBuf, .readOnly)
+      }
+      navigationManager.handle(
+        NavEvent.found, box: box, in: bufferDims, distanceMeters: distanceMeters)
       self.detectionState = .found(target: targetMut)
     }
   }

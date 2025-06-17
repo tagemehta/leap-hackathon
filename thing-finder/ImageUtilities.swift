@@ -65,9 +65,8 @@ struct ImageUtilities {
     return uiImage.jpegData(compressionQuality: 1)?.base64EncodedString() ?? ""
   }
 
-  static func cmSampleBuffertoCGImage(buffer: CMSampleBuffer) -> CGImage {
-    let pixelBuffer = CMSampleBufferGetImageBuffer(buffer)!
-    let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+  static func cvPixelBuffertoCGImage(buffer: CVPixelBuffer) -> CGImage {
+    let ciImage = CIImage(cvPixelBuffer: buffer)
     return ciImageContext.createCGImage(ciImage, from: ciImage.extent)!
   }
 }
