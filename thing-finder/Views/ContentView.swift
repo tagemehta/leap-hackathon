@@ -32,7 +32,7 @@ struct ContentView: View {
   var body: some View {
     VStack {
       ZStack {
-        CameraPreviewWrapper(
+        CameraPreviewView(
           isRunning: $isCameraRunning,
           delegate: detectionModel
         )
@@ -60,6 +60,9 @@ struct ContentView: View {
     }
     .navigationBarTitle(title, displayMode: .inline)
     .onRotate { newOrientation in
+      detectionModel.handleOrientationChange()
+    }
+    .onAppear {
       detectionModel.handleOrientationChange()
     }
   }

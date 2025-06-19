@@ -5,7 +5,7 @@ import SwiftUI
 struct ThingFinderApp: App {
   var body: some Scene {
     WindowGroup {
-      MainTabView()
+      ContentView(description: "laptop", searchMode: .objectFinder, targetClasses: ["laptop"])
     }
   }
 }

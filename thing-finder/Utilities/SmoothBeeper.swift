@@ -55,9 +55,9 @@ final class SmoothBeeper {
   deinit {
     NotificationCenter.default.removeObserver(self)
     stop()
-    #if os(iOS)
-    try? AVAudioSession.sharedInstance().setActive(false)
-    #endif
+//    #if os(iOS)
+//    try? AVAudioSession.sharedInstance().setActive(false)
+//    #endif
   }
 
   // MARK: – Public API

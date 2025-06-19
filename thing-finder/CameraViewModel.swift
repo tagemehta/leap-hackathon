@@ -1,5 +1,7 @@
+import ARKit
 import AVFoundation
 import Combine
+import Photos
 import SwiftUI
 import Vision
 
@@ -16,14 +18,15 @@ enum DetectionState: Equatable {
   }
 }
 
-class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
+class CameraViewModel: NSObject, ObservableObject, ARVideoCaptureDelegate {
+
   // Settings for configurable parameters
   private let settings: Settings
 
   @MainActor @Published var boundingBoxes: [BoundingBox] = []
   @Published private(set) var currentFPS: Double = 0.0
   var detectionState: DetectionState = DetectionState.searching
-
+  private var interfaceOrientation: UIInterfaceOrientation = UIInterfaceOrientation.portrait
   private var frameTimes: [Date] = []
   private let maxFrameTimes = 10  // Number of frames to average FPS over
   private var colors: [String: UIColor] = [:]
@@ -67,12 +70,20 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
   func handleOrientationChange() {
     // Reset bufferDims to nil so it will be recalculated on next frame
     bufferDims = nil
+    let deviceOrientation = UIDevice.current.orientation
+    switch deviceOrientation {
+    case .portrait: interfaceOrientation = .portrait
+    case .portraitUpsideDown: interfaceOrientation = .portraitUpsideDown
+    case .landscapeLeft: interfaceOrientation = .landscapeRight  // Note: these are flipped
+    case .landscapeRight: interfaceOrientation = .landscapeLeft  // Note: these are flipped
+    default: return  // Ignore face up/down and unknown orientations
+    }
   }
   // MARK: - VideoCaptureDelegate
-  public func onNewData(
-    _ capture: VideoCapture,
-    imageBuffer: CVPixelBuffer,
-    depthData: AVDepthData?
+  // MARK: - Unified frame processing
+  public func processFrame(
+    _ capture: ARVideoCapture, frame: ARFrame, imageBuffer: CVPixelBuffer,
+    depthData: @escaping (CGPoint) -> Float?
   ) {
     // Update FPS calculation
     let now = Date()
@@ -102,7 +113,9 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
     // Perform all tracking requests
     if !activeTracking.isEmpty {
       do {
-        try sequenceHandler.perform(activeTracking, on: imageBuffer)
+        try sequenceHandler.perform(
+          activeTracking, on: imageBuffer,
+          orientation: .right)  // TODO fix
         activeTracking.removeAll { $0.isLastFrame }
       } catch {
         clearActiveTracking()
@@ -116,21 +129,23 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
       {
         targetClasses.contains($0.labels[0].identifier)
           && $0.labels[0].confidence * $0.confidence > Float(settings.confidenceThreshold)
-      }
+      },
+      interfaceOrientation
     )
     // Must appear in 4 consecutive frames
     //    let candidates = detectionManager.stableDetections()
-
     let candidates = allDetections
     var identifiedObjects: [IdentifiedObject] = []
     var frameCGImage: CGImage?
-
+    frameCGImage =
+      frameCGImage ?? ImageUtilities.cvPixelBuffertoCGImage(buffer: imageBuffer)
+//    UIImage(cgImage: frameCGImage!).saveToPhotoLibrary(completion: {_,_ in})
     for candidate in candidates {
-      let (imgRect, viewRect) = ImageUtilities.unscaledBoundingBoxes(
-        for:
-          candidate.boundingBox,
-        imageSize: CGSize(width: bufferDims.width, height: bufferDims.height),
-        viewSize: capture.previewLayer?.bounds.size ?? .zero)
+      let (imgRect, viewRect) = ImageUtilities.mapBoundingBox(
+        boundingBox: candidate.boundingBox, frame: frame,
+        viewSize: capture.previewView.bounds.size,
+        uiOrientation: interfaceOrientation)
+
       let label = candidate.labels[0].identifier
       if colors[label] == nil {
         colors[label] = Constants.ultralyticsColors.randomElement() ?? .blue
@@ -235,10 +250,13 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
       // Update history for next frame
       targetMut.lastBoundingBox = observation.boundingBox
 
-      let (imgRect, viewRect) = ImageUtilities.unscaledBoundingBoxes(
-        for: normalizedBox,
-        imageSize: CGSize(width: bufferDims.width, height: bufferDims.height),
-        viewSize: capture.previewLayer?.bounds.size ?? .zero)
+      let (imgRect, viewRect) = ImageUtilities.mapBoundingBox(
+        boundingBox: normalizedBox, frame: frame, viewSize: capture.previewView.bounds.size,
+        uiOrientation: interfaceOrientation)
+      //      unscaledBoundingBoxes(
+      //        for: normalizedBox,
+      //        imageSize: CGSize(width: bufferDims.width, height: bufferDims.height),
+      //        viewSize: capture.previewView.bounds.size)
       let box = BoundingBox(
         imageRect: imgRect,
         viewRect: viewRect,
@@ -249,27 +267,11 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
       // --------------------------------------------------------
       // Distance estimation via latestDepthData (if present)
       // --------------------------------------------------------
-      var distanceMeters: Double? = nil
-      if let depthData = depthData {
-        let depth = depthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)
-        let depthBuf = depth.depthDataMap
-        CVPixelBufferLockBaseAddress(depthBuf, .readOnly)
-        let w = CVPixelBufferGetWidth(depthBuf)
-        let h = CVPixelBufferGetHeight(depthBuf)
-        let centerX = Int(min(max(0, Int(normalizedBox.midX * CGFloat(w))), w - 1))
-        let centerY = Int(min(max(0, Int((1 - normalizedBox.midY) * CGFloat(h))), h - 1))
-        if let base = CVPixelBufferGetBaseAddress(depthBuf) {
-          let rowBytes = CVPixelBufferGetBytesPerRow(depthBuf)
-          let ptr = base.advanced(by: centerY * rowBytes + centerX * MemoryLayout<Float32>.size)
-          let val = ptr.load(as: Float32.self)
-          if val.isFinite && val > 0 {
-            distanceMeters = Double(val)
-          }
-        }
-        CVPixelBufferUnlockBaseAddress(depthBuf, .readOnly)
-      }
+      var distanceMeters: Float? = depthData(CGPoint(x: viewRect.midX, y: viewRect.midY))
+      print(distanceMeters)
       navigationManager.handle(
-        NavEvent.found, box: box, in: bufferDims, distanceMeters: distanceMeters)
+        NavEvent.found, box: box, in: bufferDims,
+        distanceMeters: (distanceMeters != nil) ? Double(distanceMeters!) : nil)
       self.detectionState = .found(target: targetMut)
     }
   }
@@ -288,6 +290,7 @@ class CameraViewModel: NSObject, ObservableObject, VideoCaptureDelegate {
 
     guard let croppedImage = image.cropping(to: boundSafeBox) else { return }
     let uiImage = UIImage(cgImage: croppedImage)
+    uiImage.saveToPhotoLibrary(completion: { res, _ in res ? print("saved") : print("not saved") })
     let base64Img = uiImage.jpegData(compressionQuality: 1)?.base64EncodedString() ?? ""
     inflight[candidate.id] = verifier.verify(imageData: base64Img)
       .receive(on: DispatchQueue.main)
