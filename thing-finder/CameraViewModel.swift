@@ -301,7 +301,6 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
       // Distance estimation via latestDepthData (if present)
       // --------------------------------------------------------
       let distanceMeters: Float? = depthAt(CGPoint(x: viewRect.midX, y: viewRect.midY))
-      print(distanceMeters)
       navigationManager.handle(
         NavEvent.found, box: observation.boundingBox,
         distanceMeters: (distanceMeters != nil) ? Double(distanceMeters!) : nil)

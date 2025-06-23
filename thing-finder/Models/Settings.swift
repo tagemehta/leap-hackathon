@@ -1,3 +1,4 @@
+import ARKit
 import Combine
 import Foundation
 import SwiftUI
@@ -48,6 +49,21 @@ class Settings: ObservableObject {
 
   /// Type of distance-to-volume curve
   @AppStorage("volume_curve") var volumeCurve: VolumeCurve = .linear
+  
+  // MARK: - Camera Settings
+  
+  /// Whether to use AR mode (false = Default/AVFoundation, true = ARKit)
+  @AppStorage("use_ar_mode") var useARMode: Bool = false
+  
+  /// Whether the device has LiDAR for distance estimation
+  var hasLiDAR: Bool {
+    return ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
+  }
+  
+  /// Recommended camera mode based on device capabilities
+  var recommendedMode: CaptureSourceType {
+    return hasLiDAR ? .avfoundation : .arkit
+  }
 
   // MARK: - Detection Settings
 

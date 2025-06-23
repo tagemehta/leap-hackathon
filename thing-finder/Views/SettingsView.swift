@@ -1,3 +1,4 @@
+import ARKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -94,6 +95,48 @@ struct SettingsView: View {
                         Text("Min Volume: \(Int(settings.volumeMin * 100))%")
                         Slider(value: $settings.volumeMin, in: 0.0...0.5, step: 0.05)
                             .accessibilityLabel("Minimum Volume")
+                    }
+                }
+                
+                // MARK: - Camera Settings
+                Section(header: Text("Camera Mode")) {
+                    Toggle(isOn: $settings.useARMode) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(settings.useARMode ? "AR Mode" : "Default Mode")
+                            
+                            if settings.hasLiDAR && settings.useARMode {
+                               Text(
+                                     "Recommended: Switch to default mode. Able to provide same functionality")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            } else if !settings.useARMode {
+                                Text("Optional: Switch to AR Mode for depth estimation")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    
+                    if settings.useARMode {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "battery.25")
+                                Text("Note: AR mode uses more battery")
+                            }
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            
+                            if settings.hasLiDAR {
+                                Text("LiDAR is available on this device. Default mode is recommended for most use cases.")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            } else {
+                                Text("AR mode provides better distance estimation on devices without LiDAR.")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.top, 4)
                     }
                 }
                 

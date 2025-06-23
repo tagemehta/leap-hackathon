@@ -110,9 +110,9 @@ class VideoCapture: NSObject, FrameProvider {
     case .portraitUpsideDown:
       angle = 270
     case .landscapeLeft:
-      angle = 0
-    case .landscapeRight:
       angle = 180
+    case .landscapeRight:
+      angle = 0
     default:
       angle = 0
     }
@@ -134,7 +134,6 @@ class VideoCapture: NSObject, FrameProvider {
   public func start() {
     print("Starting video capture session...")
     if !captureSession.isRunning {
-      self.updateOrientation()
       captureSession.startRunning()
     }
   }
