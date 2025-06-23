@@ -32,8 +32,7 @@ class NavigationManager {
   }
   func handle(
     _ event: NavEvent,
-    box: BoundingBox? = nil,
-    in imageSpace: (width: Int, height: Int)? = nil,
+    box: CGRect? = nil,
     distanceMeters: Double? = nil
   ) {
     switch event {
@@ -69,8 +68,8 @@ class NavigationManager {
       timeLastSpoken = Date()
       break
     case .found:
-      if let box = box, let imageSpace = imageSpace {
-        navigate(to: box, in: imageSpace, distanceMeters: distanceMeters)
+      if let box = box {
+        navigate(to: box, distanceMeters: distanceMeters)
       } else {
         beeper.stop()
         currentInterval = nil
@@ -79,9 +78,9 @@ class NavigationManager {
   }
 
   private func navigate(
-    to box: BoundingBox, in imageSpace: (width: Int, height: Int), distanceMeters: Double?
+    to box: CGRect, distanceMeters: Double?
   ) {
-    let midx = box.imageRect.midX / CGFloat(imageSpace.width)
+    let midx = box.midX
 
     // Calculate distance from center (0.0 to 0.5)
     let distanceFromCenter = abs(midx - 0.5)

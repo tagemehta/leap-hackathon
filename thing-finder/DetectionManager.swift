@@ -31,11 +31,20 @@ class DetectionManager {
 
   public func detect(
     _ imageBuffer: CVPixelBuffer, _ detectionFilterFn: (VNRecognizedObjectObservation) -> Bool,
-    _ deviceOrientation: UIInterfaceOrientation
+    scaling: ScalingOptions
   ) -> [VNRecognizedObjectObservation] {
     // .up becaue the buffer is being appropriately rotated for orientation changes already
+    let deviceOrientation: CGImagePropertyOrientation
+    switch scaling {
+    case .avfoundation:
+      deviceOrientation = .up // Video connection is auto rotated
+    case .arkit(let orientation):
+      deviceOrientation = orientation
+      
+    }
+    
     let handler = VNImageRequestHandler(
-      cvPixelBuffer: imageBuffer, orientation: ImageUtilities.cgOrientation(for: deviceOrientation),
+      cvPixelBuffer: imageBuffer, orientation: deviceOrientation,
       options: [:])  // TODO
     do {
       // MARK: - Process image with Image2Image model

@@ -1,0 +1,332 @@
+//  Ultralytics YOLO 🚀 - AGPL-3.0 License
+//
+//  Video Capture for Ultralytics YOLOv8 Preview on iOS
+//  Part of the Ultralytics YOLO app, this file defines the VideoCapture class to interface with the device's camera,
+//  facilitating real-time video capture and frame processing for YOLOv8 model previews.
+//  Licensed under AGPL-3.0. For commercial use, refer to Ultralytics licensing: https://ultralytics.com/license
+//  Access the source code: https://github.com/ultralytics/yolo-ios-app
+//
+//  This class encapsulates camera initialization, session management, and frame capture delegate callbacks.
+//  It dynamically selects the best available camera device, configures video input and output, and manages
+//  the capture session. It also provides methods to start and stop video capture and delivers captured frames
+//  to a delegate implementing the VideoCaptureDelegate protocol.
+
+import AVKit
+import Combine
+import CoreVideo
+import SwiftUI
+import UIKit
+
+// Identifies the best available camera device based on user preferences and device capabilities.
+func bestCaptureDevice() -> AVCaptureDevice {
+  if let device = AVCaptureDevice.default(.builtInLiDARDepthCamera, for: .video, position: .back) {
+    print("LiDAR depth camera found")
+    return device
+  } else if let device = AVCaptureDevice.default(
+    .builtInTelephotoCamera, for: .video, position: .back)
+  {
+    print("telephoto")
+    return device
+  } else if let device = AVCaptureDevice.default(.builtInDualCamera, for: .video, position: .back) {
+    print("dual")
+    return device
+  } else if let device = AVCaptureDevice.default(
+    .builtInWideAngleCamera, for: .video, position: .back)
+  {
+    print("wide angle")
+    return device
+  } else {
+    fatalError("Expected back camera device is not available.")
+  }
+}
+
+class VideoCapture: NSObject, FrameProvider {
+  // MARK: - FrameProvider Protocol Properties
+  public var previewView: UIView { _previewView as UIView }
+  private var _previewView: AVPreviewView
+  public var sourceType: CaptureSourceType = .avfoundation
+
+  // Rotation handling
+  private(set) var videoRotationAngle: CGFloat = 0 {
+    didSet {
+      if videoRotationAngle != oldValue {
+        // Notify preview view of rotation change
+        _previewView.updateRotation(angle: videoRotationAngle)
+      }
+    }
+  }
+  public weak var delegate: FrameProviderDelegate?
+
+  private let captureDevice: AVCaptureDevice
+  private let captureSession: AVCaptureSession
+  private let videoOutput = AVCaptureVideoDataOutput()
+  /// Depth / disparity capture (LiDAR or dual-camera).
+  private let depthOutput = AVCaptureDepthDataOutput()
+  private var outputSynchronizer: AVCaptureDataOutputSynchronizer?
+  private var currentRotationAngle: CGFloat = 0
+  // Configures the camera and capture session with optional session presets.
+
+  /// Indicates whether the capture session is running.
+  public var isRunning: Bool {
+    return captureSession.isRunning
+  }
+
+  // MARK: - Lifecycle
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+    UIDevice.current.endGeneratingDeviceOrientationNotifications()
+  }
+
+  // MARK: - Rotation Handling
+
+  private func setupRotationObservation() {
+    // Start device orientation monitoring
+    UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+
+    // Observe orientation changes
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleOrientationChange),
+      name: UIDevice.orientationDidChangeNotification,
+      object: nil
+    )
+
+    // Initial update
+    updateOrientation()
+  }
+
+  @objc private func handleOrientationChange() {
+    updateOrientation()
+  }
+
+  private func updateOrientation() {
+    let orientation = UIDevice.current.orientation
+    let angle: CGFloat
+
+    switch orientation {
+    case .portrait:
+      angle = 90
+    case .portraitUpsideDown:
+      angle = 270
+    case .landscapeLeft:
+      angle = 0
+    case .landscapeRight:
+      angle = 180
+    default:
+      angle = 0
+    }
+
+    // Update video output connection
+    if let connection = videoOutput.connection(with: .video),
+      connection.isVideoRotationAngleSupported(angle)
+    {
+      connection.videoRotationAngle = angle
+    }
+
+    // Update preview view
+    _previewView.updateRotation(angle: angle)
+  }
+
+  // MARK: - Public Methods
+
+  /// Starts the video capture session.
+  public func start() {
+    print("Starting video capture session...")
+    if !captureSession.isRunning {
+      self.updateOrientation()
+      captureSession.startRunning()
+    }
+  }
+
+  // Stops the video capture session.
+  public func stop() {
+    if captureSession.isRunning {
+      captureSession.stopRunning()
+    }
+  }
+  override init() {
+    self.captureDevice = bestCaptureDevice()
+    self.captureSession = AVCaptureSession()
+    self._previewView = AVPreviewView(session: captureSession, device: captureDevice)
+    super.init()
+
+    // Set up rotation observation
+    setupRotationObservation()
+  }
+
+  /// Perform all AVFoundation plumbing. Call once after construction
+  public func setupSession() {
+    captureSession.beginConfiguration()
+    captureSession.sessionPreset = .photo
+
+    // MARK: Inputs
+    let videoInput = try! AVCaptureDeviceInput(device: captureDevice)
+    if captureSession.canAddInput(videoInput) {
+      captureSession.addInput(videoInput)
+    }
+
+    // MARK: Outputs
+    videoOutput.alwaysDiscardsLateVideoFrames = true
+    var outputs: [AVCaptureOutput] = []
+    if captureSession.canAddOutput(videoOutput) {
+      captureSession.addOutput(videoOutput)
+      outputs.append(videoOutput)
+    }
+
+    if AVCaptureDevice.default(.builtInLiDARDepthCamera, for: .video, position: .back) != nil,
+      captureSession.canAddOutput(depthOutput)
+    {
+      depthOutput.isFilteringEnabled = true
+      depthOutput.alwaysDiscardsLateDepthData = true
+      captureSession.addOutput(depthOutput)
+      if depthOutput.connection(with: .depthData) != nil {
+        outputs.append(depthOutput)
+      } else {
+        print("Warning: Depth output added but no valid connection")
+      }
+    }
+
+    // MARK: Device configuration
+    do {
+      try captureDevice.lockForConfiguration()
+      captureDevice.focusMode = .continuousAutoFocus
+      captureDevice.focusPointOfInterest = CGPoint(x: 0.5, y: 0.5)
+      captureDevice.exposureMode = .continuousAutoExposure
+      captureDevice.unlockForConfiguration()
+    } catch {
+      fatalError("Unable to configure the capture device.")
+    }
+
+    captureSession.commitConfiguration()
+
+    // MARK: Preview layer & rotation
+    _previewView.setupSession()
+
+    outputSynchronizer = AVCaptureDataOutputSynchronizer(dataOutputs: outputs)
+    outputSynchronizer?.setDelegate(self, queue: DispatchQueue(label: "camera-queue"))
+  }
+}
+
+// Extension to handle AVCaptureVideoDataOutputSampleBufferDelegate events.
+// MARK: - AVCapture Delegates
+extension VideoCapture: AVCaptureDataOutputSynchronizerDelegate {
+  public func dataOutputSynchronizer(
+    _ synchronizer: AVCaptureDataOutputSynchronizer,
+    didOutput synchronizedDataCollection: AVCaptureSynchronizedDataCollection
+  ) {
+    // Retrieve the synchronized depth and sample buffer container objects.
+    let syncedDepthData =
+      synchronizedDataCollection.synchronizedData(for: depthOutput)
+      as? AVCaptureSynchronizedDepthData
+    let syncedVideoData =
+      synchronizedDataCollection.synchronizedData(for: videoOutput)
+      as? AVCaptureSynchronizedSampleBufferData
+
+    guard let pixelBuffer = syncedVideoData?.sampleBuffer.imageBuffer else { return }
+    let depthProvider: (CGPoint) -> Float? = { point in
+      var distanceMeters: Float32? = nil
+      if let depthData = syncedDepthData?.depthData {
+        let depth = depthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)
+        let depthBuf = depth.depthDataMap
+        CVPixelBufferLockBaseAddress(depthBuf, .readOnly)
+        if let base = CVPixelBufferGetBaseAddress(depthBuf) {
+          let rowBytes = CVPixelBufferGetBytesPerRow(depthBuf)
+          let ptr = base.advanced(
+            by: Int(point.y) * rowBytes + Int(point.x) * MemoryLayout<Float32>.size)
+          let val = ptr.load(as: Float32.self)
+          if val.isFinite && val > 0 {
+            distanceMeters = val
+          }
+        }
+        CVPixelBufferUnlockBaseAddress(depthBuf, .readOnly)
+        return distanceMeters
+      }
+      return nil
+    }
+    let imageToViewRect: (CGRect, (CGSize, CGSize)) -> CGRect = { imageRect, sizes in
+      let (imageSize, viewSize) = sizes
+      // 2) compute the uniform “fill” scale for image → view
+      let scale = max(
+        viewSize.width / imageSize.width,
+        viewSize.height / imageSize.height
+      )
+      let scaledImageSize = CGSize(
+        width: imageSize.width * scale,
+        height: imageSize.height * scale
+      )
+
+      // 3) compute centering offsets
+      let xOffset = (viewSize.width - scaledImageSize.width) / 2
+      let yOffset = (viewSize.height - scaledImageSize.height) / 2
+
+      // 4) map image-pixel rect into view-pixel rect
+      let viewX = imageRect.minX * scale + xOffset
+      let viewY = imageRect.minY * scale + yOffset
+      let viewW = imageRect.width * scale
+      let viewH = imageRect.height * scale
+      let viewRect = CGRect(x: viewX, y: viewY, width: viewW, height: viewH)
+      return viewRect
+
+    }
+    // Package the captured data.
+    delegate?.processFrame(
+      self,
+      buffer: pixelBuffer,
+      depthAt: depthProvider, imageToViewRect: imageToViewRect)
+  }
+
+}
+
+// https://medium.com/@hunter-pearson/using-avfoundations-rotationcoordinator-to-rotate-media-views-0171c336d7f1
+class AVPreviewView: UIView {
+  // MARK: - Properties
+
+  private let session: AVCaptureSession
+
+  override class var layerClass: AnyClass {
+    AVCaptureVideoPreviewLayer.self
+  }
+
+  private var videoPreviewLayer: AVCaptureVideoPreviewLayer {
+    layer as! AVCaptureVideoPreviewLayer
+  }
+
+  init(session: AVCaptureSession, device: AVCaptureDevice) {
+    self.session = session
+    super.init(frame: .zero)
+
+    videoPreviewLayer.session = session
+    videoPreviewLayer.videoGravity = .resizeAspectFill
+  }
+
+  deinit {
+    UIDevice.current.endGeneratingDeviceOrientationNotifications()
+  }
+
+  /// Call after the associated AVCaptureSession is fully configured.
+  public func setupSession() {
+    videoPreviewLayer.session = session
+    videoPreviewLayer.videoGravity = .resizeAspectFill
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
+  // MARK: - Rotation
+
+  func updateRotation(angle: CGFloat) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self,
+        let connection = self.videoPreviewLayer.connection,
+        connection.isVideoRotationAngleSupported(angle)
+      else {
+        return
+      }
+
+      connection.videoRotationAngle = angle
+      self.videoPreviewLayer.setNeedsLayout()
+    }
+  }
+}

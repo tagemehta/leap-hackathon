@@ -34,7 +34,7 @@ struct ContentView: View {
       ZStack {
         CameraPreviewView(
           isRunning: $isCameraRunning,
-          delegate: detectionModel
+          delegate: detectionModel, source: .arkit
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 

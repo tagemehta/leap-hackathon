@@ -42,7 +42,7 @@ struct InputView: View {
       Form {
         Section(header: Text("Search Mode")) {
           Picker("Mode", selection: $searchMode) {
-            ForEach(SearchMode.allCases) { mode in
+            ForEach(SearchMode.allCases, id: \.id) { mode in
               VStack(alignment: .leading) {
                 Text(mode.rawValue)
                   .font(.headline)

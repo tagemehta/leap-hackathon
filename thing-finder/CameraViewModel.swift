@@ -18,7 +18,7 @@ enum DetectionState: Equatable {
   }
 }
 
-class CameraViewModel: NSObject, ObservableObject, ARVideoCaptureDelegate {
+class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
 
   // Settings for configurable parameters
   private let settings: Settings
@@ -34,7 +34,7 @@ class CameraViewModel: NSObject, ObservableObject, ARVideoCaptureDelegate {
   private let CONFIDENCE_FILTER: Float = 0.4  // Only tracks if it passes llm so send as many as you want
   private let targetClasses: [String]  // User Input: Coco classes we are filtering for
   private let targetTextDescription: String  // User Input: Describe what we are looking for
-  private var bufferDims: (width: Int, height: Int)?
+  private var bufferDims: CGSize?
 
   private var detectionManager: DetectionManager
   private var navigationManager: NavigationManager
@@ -45,6 +45,8 @@ class CameraViewModel: NSObject, ObservableObject, ARVideoCaptureDelegate {
   private var inflight: [UUID: AnyCancellable] = [:]  // candidate.id ⇒ cancellable
   private var sequenceHandler = VNSequenceRequestHandler()
   private var activeTracking: [VNTrackObjectRequest] = []
+
+  private var imgUtils: ImageUtilities = ImageUtilities()
 
   init(targetClasses: [String], targetTextDescription: String, settings: Settings) {
     self.targetClasses = targetClasses
@@ -81,11 +83,18 @@ class CameraViewModel: NSObject, ObservableObject, ARVideoCaptureDelegate {
   }
   // MARK: - VideoCaptureDelegate
   // MARK: - Unified frame processing
-  public func processFrame(
-    _ capture: ARVideoCapture, frame: ARFrame, imageBuffer: CVPixelBuffer,
-    depthData: @escaping (CGPoint) -> Float?
+  func processFrame(
+    _ capture: any FrameProvider, buffer: CVPixelBuffer, depthAt: @escaping (CGPoint) -> Float?,
+    imageToViewRect: @escaping (CGRect, (CGSize, CGSize)) -> CGRect
   ) {
-    // Update FPS calculation
+    let scalingOption: ScalingOptions  // Update FPS calculation
+    switch capture.sourceType {
+    case .arkit:
+      scalingOption = .arkit(
+        imgUtils.cgOrientation(for: interfaceOrientation))
+    case .avfoundation:
+      scalingOption = .avfoundation
+    }
     let now = Date()
     frameTimes.append(now)
     // Remove timestamps older than 1 second
@@ -104,18 +113,25 @@ class CameraViewModel: NSObject, ObservableObject, ARVideoCaptureDelegate {
 
     // Store buffer dimensions
     guard let bufferDims = bufferDims else {  // Orientation changed skip a frame to fix buffer size
-      let frameWidth = Int(CVPixelBufferGetWidth(imageBuffer))
-      let frameHeight = Int(CVPixelBufferGetHeight(imageBuffer))
-      bufferDims = (frameWidth, frameHeight)
+      let frameWidth = CVPixelBufferGetWidth(buffer)
+      let frameHeight = CVPixelBufferGetHeight(buffer)
+      bufferDims = CGSize(width: frameWidth, height: frameHeight)
       return
     }
 
     // Perform all tracking requests
     if !activeTracking.isEmpty {
       do {
+        let cgOrientation: CGImagePropertyOrientation
+        switch scalingOption {
+        case .arkit(let orientation):
+          cgOrientation = orientation
+        case .avfoundation:
+          cgOrientation = .up
+        }
         try sequenceHandler.perform(
-          activeTracking, on: imageBuffer,
-          orientation: .right)  // TODO fix
+          activeTracking, on: buffer,
+          orientation: cgOrientation)  // TODO fix
         activeTracking.removeAll { $0.isLastFrame }
       } catch {
         clearActiveTracking()
@@ -125,26 +141,42 @@ class CameraViewModel: NSObject, ObservableObject, ARVideoCaptureDelegate {
     }
     var boundingBoxesLocal: [BoundingBox] = []
     let allDetections = detectionManager.detect(
-      imageBuffer,
+      buffer,
       {
         targetClasses.contains($0.labels[0].identifier)
           && $0.labels[0].confidence * $0.confidence > Float(settings.confidenceThreshold)
       },
-      interfaceOrientation
+      scaling: scalingOption
     )
     // Must appear in 4 consecutive frames
     //    let candidates = detectionManager.stableDetections()
     let candidates = allDetections
+
     var identifiedObjects: [IdentifiedObject] = []
     var frameCGImage: CGImage?
-    frameCGImage =
-      frameCGImage ?? ImageUtilities.cvPixelBuffertoCGImage(buffer: imageBuffer)
-//    UIImage(cgImage: frameCGImage!).saveToPhotoLibrary(completion: {_,_ in})
+//    frameCGImage =
+//      frameCGImage ?? imgUtils.cvPixelBuffertoCGImage(buffer: buffer)
+//      UIImage(cgImage: frameCGImage!).saveToPhotoLibrary { _, _ in
+//          print("saved processFrame")
+//        }
+    //     Capture preview view bounds on main thread
+    let previewViewBounds: CGRect
+    if Thread.isMainThread {
+      previewViewBounds = capture.previewView.bounds
+    } else {
+      previewViewBounds = DispatchQueue.main.sync {
+        capture.previewView.bounds
+      }
+    }
+
     for candidate in candidates {
-      let (imgRect, viewRect) = ImageUtilities.mapBoundingBox(
-        boundingBox: candidate.boundingBox, frame: frame,
-        viewSize: capture.previewView.bounds.size,
-        uiOrientation: interfaceOrientation)
+      let (imgRect, viewRect) = imgUtils.unscaledBoundingBoxes(
+        for: candidate.boundingBox,
+        imageSize: bufferDims,
+        viewSize: previewViewBounds.size,
+        imageToView: imageToViewRect,
+        options: scalingOption
+      )
 
       let label = candidate.labels[0].identifier
       if colors[label] == nil {
@@ -166,7 +198,7 @@ class CameraViewModel: NSObject, ObservableObject, ARVideoCaptureDelegate {
       case .searching:
         if verifier.timeSinceLastVerification() > settings.verificationCooldown {
           frameCGImage =
-            frameCGImage ?? ImageUtilities.cvPixelBuffertoCGImage(buffer: imageBuffer)
+            frameCGImage ?? imgUtils.cvPixelBuffertoCGImage(buffer: buffer)
           let trackingReq = VNTrackObjectRequest(detectedObjectObservation: candidate)
           activeTracking.append(trackingReq)
           let identifiedObject = IdentifiedObject(
@@ -214,6 +246,7 @@ class CameraViewModel: NSObject, ObservableObject, ARVideoCaptureDelegate {
       // 1. Early-exit if Vision’s current box clearly doesn’t match the
       //    box from the previous frame (stored in lastBoundingBox).
       // -------------------------------------------------------------
+
       let prevBox = target.lastBoundingBox ?? observation.boundingBox
       let iouPrev = prevBox.iou(with: observation.boundingBox)
       let diagonal = Float(hypot(prevBox.width, prevBox.height))
@@ -249,14 +282,14 @@ class CameraViewModel: NSObject, ObservableObject, ARVideoCaptureDelegate {
 
       // Update history for next frame
       targetMut.lastBoundingBox = observation.boundingBox
+      let (imgRect, viewRect) = imgUtils.unscaledBoundingBoxes(
+        for: normalizedBox,
+        imageSize: CGSize(width: bufferDims.width, height: bufferDims.height),
+        viewSize: previewViewBounds.size,
+        imageToView: imageToViewRect,
+        options: scalingOption
+      )
 
-      let (imgRect, viewRect) = ImageUtilities.mapBoundingBox(
-        boundingBox: normalizedBox, frame: frame, viewSize: capture.previewView.bounds.size,
-        uiOrientation: interfaceOrientation)
-      //      unscaledBoundingBoxes(
-      //        for: normalizedBox,
-      //        imageSize: CGSize(width: bufferDims.width, height: bufferDims.height),
-      //        viewSize: capture.previewView.bounds.size)
       let box = BoundingBox(
         imageRect: imgRect,
         viewRect: viewRect,
@@ -267,10 +300,10 @@ class CameraViewModel: NSObject, ObservableObject, ARVideoCaptureDelegate {
       // --------------------------------------------------------
       // Distance estimation via latestDepthData (if present)
       // --------------------------------------------------------
-      var distanceMeters: Float? = depthData(CGPoint(x: viewRect.midX, y: viewRect.midY))
+      let distanceMeters: Float? = depthAt(CGPoint(x: viewRect.midX, y: viewRect.midY))
       print(distanceMeters)
       navigationManager.handle(
-        NavEvent.found, box: box, in: bufferDims,
+        NavEvent.found, box: observation.boundingBox,
         distanceMeters: (distanceMeters != nil) ? Double(distanceMeters!) : nil)
       self.detectionState = .found(target: targetMut)
     }
@@ -290,7 +323,6 @@ class CameraViewModel: NSObject, ObservableObject, ARVideoCaptureDelegate {
 
     guard let croppedImage = image.cropping(to: boundSafeBox) else { return }
     let uiImage = UIImage(cgImage: croppedImage)
-    uiImage.saveToPhotoLibrary(completion: { res, _ in res ? print("saved") : print("not saved") })
     let base64Img = uiImage.jpegData(compressionQuality: 1)?.base64EncodedString() ?? ""
     inflight[candidate.id] = verifier.verify(imageData: base64Img)
       .receive(on: DispatchQueue.main)
