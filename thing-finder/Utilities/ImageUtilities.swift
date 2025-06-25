@@ -5,9 +5,9 @@
 //  Created by Tage Mehta on 6/10/25.
 //
 
-import ARKit.ARFrame
 import CoreMedia
 import SwiftUI
+import Vision
 
 class ImageUtilities {
   private var ciImageContext: CIContext = CIContext()
@@ -16,71 +16,7 @@ class ImageUtilities {
   // Bounding boxes are relative to the warped scaleFilled box in 0-1 space
   // assuming .scaleFill/videoGravity=resizeAspectFill.
 
-  /// Maps one Vision box →
-  ///   • `imageRect`  – pixel coords in the raw CVPixelBuffer (for cropping)
-  ///   • `viewRect`   – pixel coords in the preview view      (for drawing)
-  ///
-  /// - Parameters:
-  ///   - normalizedRect: Vision’s 0-1 rectangle (portrait-up).
-  ///   - imageSize:      CGSize(width: CVPixelBufferGetWidth, height: CVPixelBufferGetHeight)
-  ///                     *as delivered* by the camera/ARKit.
-  ///   - viewSize:       previewView.bounds.size.
-  ///   - bufferOri:      The orientation you passed to Vision for *this* buffer
-  ///                     (e.g. `.right` when the device is portrait).
-  ///   - viewOri:        The UI’s current interface orientation, expressed as
-  ///                     a `CGImagePropertyOrientation` (`.up` is safest).
-  ///
-  func mapBoundingBox(
-    boundingBox bbox: CGRect,
-    frame: ARFrame,
-    viewSize: CGSize,
-    uiOrientation: UIInterfaceOrientation
-  ) -> (imageRect: CGRect, viewRect: CGRect) {
-    // ------------------------------------------------------------------
-    // A. Rotate Vision’s box (portrait) -> buffer orientation (.right / .left / .up / .down)
-    // ------------------------------------------------------------------
-    let cgOri = self.cgOrientation(for: uiOrientation)
-    let bufRectBL = self.inverseRotation(bbox, for: cgOri)  // still bottom-left origin
-
-    // ------------------------------------------------------------------
-    // B. Flip to TOP-LEFT origin (what CoreGraphics & ARKit expect)
-    // ------------------------------------------------------------------
-    let bufRectTL = CGRect(
-      x: bufRectBL.origin.x,
-      y: 1 - bufRectBL.origin.y - bufRectBL.height,
-      width: bufRectBL.width,
-      height: bufRectBL.height)
-
-    // ------------------------------------------------------------------
-    // C. IMAGE-SPACE RECT  (crop from CVPixelBuffer)
-    // ------------------------------------------------------------------
-    let res = frame.camera.imageResolution  // e.g. 1920 × 1440
-    let imgX = bufRectTL.origin.x * CGFloat(res.width)
-    let imgY = bufRectTL.origin.y * CGFloat(res.height)
-    let imgW = bufRectTL.width * CGFloat(res.width)
-    let imgH = bufRectTL.height * CGFloat(res.height)
-    let imageRect = CGRect(x: imgX, y: imgY, width: imgW, height: imgH)
-
-    // ------------------------------------------------------------------
-    // D. VIEW-SPACE RECT  (overlay)
-    // ------------------------------------------------------------------
-    let vpSize = viewSize  // NOT the camera resolution!
-    let tx = frame.displayTransform(
-      for: uiOrientation,
-      viewportSize: vpSize)
-
-    let viewNorm = bufRectTL.applying(tx)  // still 0-1
-    let viewRect = CGRect(
-      x: viewNorm.origin.x * vpSize.width,
-      y: viewNorm.origin.y * vpSize.height,
-      width: viewNorm.width * vpSize.width,
-      height: viewNorm.height * vpSize.height)
-
-    return (imageRect, viewRect)
-  }
-
-  func cgOrientation(for uiOrientation: UIInterfaceOrientation) -> CGImagePropertyOrientation
-  {
+  func cgOrientation(for uiOrientation: UIInterfaceOrientation) -> CGImagePropertyOrientation {
     switch uiOrientation {
     case .portrait: return .right
     case .portraitUpsideDown: return .left

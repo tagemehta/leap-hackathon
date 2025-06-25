@@ -64,6 +64,8 @@ class VideoCapture: NSObject, FrameProvider {
   private let depthOutput = AVCaptureDepthDataOutput()
   private var outputSynchronizer: AVCaptureDataOutputSynchronizer?
   private var currentRotationAngle: CGFloat = 0
+  /// Dedicated queue for camera operations to avoid blocking the main thread
+  private let cameraQueue = DispatchQueue(label: "camera-queue", qos: .userInitiated)
   // Configures the camera and capture session with optional session presets.
 
   /// Indicates whether the capture session is running.
@@ -134,14 +136,20 @@ class VideoCapture: NSObject, FrameProvider {
   public func start() {
     print("Starting video capture session...")
     if !captureSession.isRunning {
-      captureSession.startRunning()
+      // Run on the dedicated camera queue to avoid UI unresponsiveness
+      cameraQueue.async { [weak self] in
+        self?.captureSession.startRunning()
+      }
     }
   }
 
   // Stops the video capture session.
   public func stop() {
     if captureSession.isRunning {
-      captureSession.stopRunning()
+      // Run on the dedicated camera queue to avoid UI unresponsiveness
+      cameraQueue.async { [weak self] in
+        self?.captureSession.stopRunning()
+      }
     }
   }
   override init() {
@@ -192,6 +200,27 @@ class VideoCapture: NSObject, FrameProvider {
       captureDevice.focusMode = .continuousAutoFocus
       captureDevice.focusPointOfInterest = CGPoint(x: 0.5, y: 0.5)
       captureDevice.exposureMode = .continuousAutoExposure
+
+      // Set explicit frame rate to 30fps
+      if captureDevice.activeFormat.videoSupportedFrameRateRanges.first != nil {
+        // Find a suitable frame rate range that includes 30fps
+        let desiredFrameRate = 30.0
+        let availableRanges = captureDevice.activeFormat.videoSupportedFrameRateRanges
+
+        // Find a range that supports our desired frame rate
+        if availableRanges.first(where: {
+          $0.minFrameRate <= desiredFrameRate && $0.maxFrameRate >= desiredFrameRate
+        }) != nil {
+          // Set the frame duration (1/fps)
+          let frameDuration = CMTime(value: 1, timescale: CMTimeScale(desiredFrameRate))
+          captureDevice.activeVideoMinFrameDuration = frameDuration
+          captureDevice.activeVideoMaxFrameDuration = frameDuration
+          print("Set camera frame rate to \(desiredFrameRate) fps")
+        } else {
+          print("Camera does not support 30fps, using default frame rate")
+        }
+      }
+
       captureDevice.unlockForConfiguration()
     } catch {
       fatalError("Unable to configure the capture device.")
@@ -203,7 +232,7 @@ class VideoCapture: NSObject, FrameProvider {
     _previewView.setupSession()
 
     outputSynchronizer = AVCaptureDataOutputSynchronizer(dataOutputs: outputs)
-    outputSynchronizer?.setDelegate(self, queue: DispatchQueue(label: "camera-queue"))
+    outputSynchronizer?.setDelegate(self, queue: cameraQueue)
   }
 }
 

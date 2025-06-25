@@ -5,7 +5,7 @@ struct ContentView: View {
   let description: String
   let searchMode: SearchMode
   let targetClasses: [String]
-
+  private let settings: Settings
   @StateObject private var detectionModel: CameraViewModel
 
   init(
@@ -16,11 +16,13 @@ struct ContentView: View {
     self.description = description
     self.searchMode = searchMode
     self.targetClasses = targetClasses
+    let settings = Settings()
+    self.settings = settings
     _detectionModel = StateObject(
       wrappedValue: CameraViewModel(
         targetClasses: targetClasses,
         targetTextDescription: description,
-        settings: Settings()
+        settings: settings
       )
     )
   }
@@ -34,7 +36,7 @@ struct ContentView: View {
       ZStack {
         CameraPreviewView(
           isRunning: $isCameraRunning,
-          delegate: detectionModel, source: .arkit
+          delegate: detectionModel, source: settings.useARMode ? .arkit : .avfoundation
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 

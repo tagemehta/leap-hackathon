@@ -17,14 +17,14 @@ struct InputView: View {
   @FocusState private var isInputFocused: Bool
 
   // Vehicle classes for Uber Finder
-  private let vehicleClasses = ["car", "truck", "bus"].sorted()
+  private let vehicleClasses = ["car", "truck", "bus"]
 
   // Full YOLO class list for Object Finder
   private let yoloClasses = [
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
     "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog",
-    "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
-    "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite",
+    "horse", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard",
+    "sports ball", "kite",
     "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle",
     "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich",
     "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
@@ -86,7 +86,10 @@ struct InputView: View {
           }
           .frame(maxWidth: .infinity, alignment: .center)
           .buttonStyle(.borderedProminent)
-          .disabled(description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+          .disabled(
+            searchMode == .uberFinder
+              ? description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              : false)
         }
       }
       .navigationTitle("Find My Thing")
