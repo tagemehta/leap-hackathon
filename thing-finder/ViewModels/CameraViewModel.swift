@@ -1,17 +1,25 @@
-import ARKit
-import AVFoundation
 import Combine
-import Photos
 import SwiftUI
 import Vision
 
-/// Refactored CameraViewModel that uses the new protocol-based service architecture
+/// A view model that manages the camera feed, object detection, and user interface updates.
+///
+/// This class coordinates between the camera feed, object detection services, and the UI.
+/// It handles frame processing, object tracking, and state management while ensuring
+/// thread safety and memory efficiency.
+///
 class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
+
+  // MARK: - Dependencies
+
+  private let dependencies: CameraDependencies
+  private let cameraService: CameraService
+  private let verifier: LLMVerifier
 
   // MARK: - Published Properties
 
   /// Bounding boxes to display in the UI
-  @MainActor @Published var boundingBoxes: [BoundingBox] = []
+  @Published var boundingBoxes: [BoundingBox] = []
 
   /// Current FPS value
   @Published private(set) var currentFPS: Double = 0.0
@@ -30,71 +38,64 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
   /// Cached buffer dimensions
   private var cachedBufferDims: CGSize?
 
+  /// In-flight verification requests
+  private var inflight: [UUID: AnyCancellable] = [:]
+
   /// Confidence filter threshold
   private let CONFIDENCE_FILTER: Float = 0.4
 
   /// Target classes to detect
-  private let targetClasses: [String]
+  private var targetClasses: [String] { dependencies.targetClasses }
 
   /// Text description of the target
-  private let targetTextDescription: String
+  private var targetTextDescription: String { dependencies.targetTextDescription }
 
   /// Settings for configurable parameters
-  private let settings: Settings
-
-  /// LLM verifier for object verification
-  private var verifier: LLMVerifier
-
-  /// In-flight verification requests
-  private var inflight: [UUID: AnyCancellable] = [:]
-
-  /// Camera service that coordinates all camera-related functionality
-  private let cameraService: CameraService
+  private var settings: Settings { dependencies.settings }
 
   /// Navigation manager for handling navigation events
-  private var navigationManager: NavigationManager
+  private var navigationManager: NavigationManager { dependencies.navigationManager }
 
   /// Detection manager for object detection
-  private var detectionManager: DetectionManager
+  private var detectionManager: DetectionManager { dependencies.detectionManager }
 
   /// Image utilities for image processing
-  private var imgUtils: ImageUtilities
+  private var imgUtils: ImageUtilities { dependencies.imageUtils }
 
   // MARK: - Initialization
 
   /// Initializes the CameraViewModel with required parameters
-  /// - Parameters:
-  ///   - targetClasses: Classes to detect
-  ///   - targetTextDescription: Text description of the target
-  ///   - settings: Application settings
-  init(targetClasses: [String], targetTextDescription: String, settings: Settings) {
-    self.targetClasses = targetClasses
-    self.targetTextDescription = targetTextDescription
+  /// - Parameter dependencies: Container for all required dependencies
+  init(dependencies: CameraDependencies) {
+    self.dependencies = dependencies
     self.verifier = LLMVerifier(
-      targetClasses: targetClasses, targetTextDescription: targetTextDescription)
-    let mlModel = try! VNCoreMLModel(for: yolo11n(configuration: .init()).model)
-    mlModel.featureProvider = ThresholdProvider(iouThreshold: 0.45, confidenceThreshold: 0.25)
-    self.settings = settings
-    self.detectionManager = DetectionManager(model: mlModel)
-    self.navigationManager = NavigationManager(settings: settings)
-    self.imgUtils = ImageUtilities()
+      targetClasses: dependencies.targetClasses,
+      targetTextDescription: dependencies.targetTextDescription
+    )
 
     // Create camera service using factory
     self.cameraService = ServiceFactory.createCameraService(
-      settings: settings,
-      navigationManager: navigationManager,
-      detectionManager: detectionManager,
-      imgUtils: imgUtils
+      settings: dependencies.settings,
+      navigationManager: dependencies.navigationManager,
+      detectionManager: dependencies.detectionManager,
+      imgUtils: dependencies.imageUtils
     )
 
     super.init()
 
     // Set up publishers
     setupPublishers()
+  }
 
-    // Start navigation
-    navigationManager.handle(
-      .start(targetClasses: targetClasses, targetTextDescription: targetTextDescription))
+  /// Convenience initializer for backward compatibility
+  convenience init(targetClasses: [String], targetTextDescription: String, settings: Settings) {
+    self.init(
+      dependencies: .makeDefault(
+        targetClasses: targetClasses,
+        targetTextDescription: targetTextDescription,
+        settings: settings
+      )
+    )
   }
 
   /// Sets up publishers for FPS and detection state
@@ -111,14 +112,19 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
 
   /// Clean up resources when the view model is deallocated
   deinit {
+    // Operations on main actor must be dispatched asynchronously from a non-isolated context.
     self.cancelAllInflight()
-    // Clear tracking through cameraService
-    cameraService.clearTracking()
+    self.cameraService.clearTracking()
+
   }
 
   // MARK: - Orientation Handling
 
   /// Handles device orientation changes
+  /// Handles device orientation changes and updates the UI accordingly.
+  ///
+  /// This method should be called when the device orientation changes.
+  /// It ensures that the camera feed and UI elements are properly oriented.
   func handleOrientationChange() {
     // Reset bufferDims and cachedPreviewViewBounds to nil so they will be recalculated on next frame
     cachedBufferDims = nil
@@ -175,10 +181,15 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
       // Process candidates for detection
       let candidates = cameraService.performObjectDetection(
         buffer: buffer,
-        filter: { observation in
+        filter: { [weak self] (observation: VNRecognizedObjectObservation) -> Bool in
           // Filter observations based on confidence
-          guard let label = observation.labels.first else { return false }
-          return label.confidence > CONFIDENCE_FILTER && targetClasses.contains(label.identifier)
+          guard let self = self,
+            let label = observation.labels.first
+          else {
+            return false
+          }
+          return label.confidence > CONFIDENCE_FILTER
+            && self.targetClasses.contains(label.identifier)
         },
         scaling: scalingOption
       )
@@ -337,6 +348,14 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
   ///   - image: The image containing the candidate
   private func startVerification(for candidate: IdentifiedObject, image: CGImage) {
     // Skip if already verifying this candidate
+    if self.targetTextDescription == "" {
+      _ = self.cameraService.handleVerificationResult(
+        candidate: candidate,
+        matched: true,
+        inflightRemaining: false  // always false
+      )
+      return
+    }
     guard inflight[candidate.id] == nil, let bufferDims = cachedBufferDims else { return }
 
     // Get the image rectangle and create a safe bounding box
