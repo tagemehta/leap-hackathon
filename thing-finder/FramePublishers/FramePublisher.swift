@@ -14,8 +14,7 @@ protocol FrameProviderDelegate: AnyObject {
   func processFrame(
     _ provider: any FrameProvider,
     buffer: CVPixelBuffer,
-    depthAt: @escaping (CGPoint) -> Float?,
-    imageToViewRect: @escaping (CGRect, _ sizes : (CGSize, CGSize)) -> CGRect
+    depthAt: @escaping (CGPoint) -> Float?
   )
 }
 

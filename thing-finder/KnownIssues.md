@@ -8,3 +8,4 @@
 - Detections aren't as plentiful as in the yolo app. Check the camera configuration
   - Solved: They are using label confidence and we were using object confidence
 - No unit or integration testing happening
+- ARKit in landscape mode seems to be having issues

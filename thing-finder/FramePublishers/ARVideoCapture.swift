@@ -44,7 +44,7 @@ class ARVideoCapture: NSObject, ARSessionDelegate, FrameProvider {
 
   /// Delegate to receive frames + depth closure.
   public weak var delegate: FrameProviderDelegate?
-  
+
   /// Only let one frame process at a time
   private var isProcessingFrame: Bool = false
   override init() {
@@ -145,41 +145,17 @@ class ARVideoCapture: NSObject, ARSessionDelegate, FrameProvider {
     guard !isProcessingFrame else {
       return
     }
-    
+
     isProcessingFrame = true
     defer { isProcessingFrame = false }
-    
+
     let pixelBuffer = frame.capturedImage
     let cameraTransform = frame.camera.transform
-    // Capture the latest depthMap if available
-    let depthBuffer = (frame.smoothedSceneDepth ?? frame.sceneDepth)?.depthMap
-
     // Build our depth‐lookup closure
-    let depthProvider: (CGPoint) -> Float? = { [weak previewView, weak previewARView, weak session] point in
-      // 1) LiDAR depth‐map path
-      if let depthMap = depthBuffer, let view = previewView {
-        let viewSize = view.bounds.size
-        // normalize to [0–1]
-        let xNorm = point.x / viewSize.width
-        let yNorm = point.y / viewSize.height
-        let w = CVPixelBufferGetWidth(depthMap)
-        let h = CVPixelBufferGetHeight(depthMap)
-        let px = min(max(Int(xNorm * CGFloat(w)), 0), w - 1)
-        let py = min(max(Int(yNorm * CGFloat(h)), 0), h - 1)
+    let depthProvider: (CGPoint) -> Float? = {
+      [weak previewARView, weak session] point in
 
-        CVPixelBufferLockBaseAddress(depthMap, [])
-        defer { CVPixelBufferUnlockBaseAddress(depthMap, []) }
-
-        let rowBytes = CVPixelBufferGetBytesPerRow(depthMap)
-        let floatsPerRow = rowBytes / MemoryLayout<Float32>.size
-        let base = unsafeBitCast(
-          CVPixelBufferGetBaseAddress(depthMap),
-          to: UnsafeMutablePointer<Float32>.self)
-        let depth = base[py * floatsPerRow + px]
-        return depth
-      }
-
-      // 2) Raycast fallback
+      // Raycast
 
       if let query = previewARView?.makeRaycastQuery(
         from: point,
@@ -196,19 +172,10 @@ class ARVideoCapture: NSObject, ARSessionDelegate, FrameProvider {
       return nil
     }
 
-    func imageToViewRect(_ rect: CGRect, _ sizes: (CGSize, CGSize)) -> CGRect {
-      let (_, viewSize) = sizes
-      let transform = frame.displayTransform(
-        for: UIInterfaceOrientation(UIDevice.current.orientation), viewportSize: viewSize)
-      let normalizedRect = rect.applying(transform)
-      return VNImageRectForNormalizedRect(normalizedRect, Int(viewSize.width), Int(viewSize.height))
-    }
-
     delegate?.processFrame(
       self,
       buffer: pixelBuffer,
-      depthAt: depthProvider,
-      imageToViewRect: imageToViewRect
+      depthAt: depthProvider
     )
   }
 }

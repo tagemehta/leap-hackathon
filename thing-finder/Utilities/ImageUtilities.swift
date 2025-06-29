@@ -155,19 +155,14 @@ class ImageUtilities {
     for normalizedRect: CGRect,
     imageSize: CGSize,  // e.g. (width: CVPixelBufferGetWidth, height: CVPixelBufferGetHeight)
     viewSize: CGSize,  // e.g. videoPreview.bounds.size
-    imageToView: (CGRect, (CGSize, CGSize)) -> CGRect,
-    options: ScalingOptions
+    orientation: CGImagePropertyOrientation
   ) -> (imageRect: CGRect, viewRect: CGRect) {
     // -----------------------------------------------------------------------------------------
     // A. Vision outputs upright. Rotate back to buffer orientation (if buffer isn't upright)
     // -----------------------------------------------------------------------------------------
     let bufRectBL: CGRect
-    switch options {
-    case .arkit(let cgOri):
-      bufRectBL = self.inverseRotation(normalizedRect, for: cgOri)
-    case .avfoundation:
-      bufRectBL = normalizedRect
-    }
+    let ori = orientation
+    bufRectBL = self.inverseRotation(normalizedRect, for: ori)
 
     // ------------------------------------------------------------------
     // B. Flip to TOP-LEFT origin (what CoreGraphics & ARKit expect)
@@ -177,6 +172,12 @@ class ImageUtilities {
       y: 1 - bufRectBL.origin.y - bufRectBL.height,
       width: bufRectBL.width,
       height: bufRectBL.height)
+    let uprightNormRectTL = CGRect(
+      x: normalizedRect.origin.x,
+      y: 1 - normalizedRect.origin.y - normalizedRect.height,
+      width: normalizedRect.width,
+      height: normalizedRect.height
+    )
 
     // ------------------------------------------------------------------
     // C. IMAGE-SPACE RECT  (crop from CVPixelBuffer)
@@ -186,14 +187,36 @@ class ImageUtilities {
     // ------------------------------------------------------------------
     // D. VIEW-SPACE RECT  (overlay)
     // ------------------------------------------------------------------
-    let viewRect: CGRect
-    switch options {
-    case .arkit(_):
-      // For ARKit, bufRectTL is already in the buffer’s orientation.
-      viewRect = imageToView(bufRectTL, (imageSize, viewSize))
-    case .avfoundation:
-      viewRect = imageToView(imageRect, (imageSize, viewSize))
+
+    var imageSizeRotated = imageSize
+    switch ori {
+    case .left, .right:
+      imageSizeRotated = CGSize(width: imageSize.height, height: imageSize.width)
+    default:
+      break
     }
+    let imageRectUpright = VNImageRectForNormalizedRect(
+      uprightNormRectTL, Int(imageSizeRotated.width), Int(imageSizeRotated.height))
+    // compute the uniform “fill” scale for image → view
+    let scale = max(
+      viewSize.width / imageSizeRotated.width,
+      viewSize.height / imageSizeRotated.height
+    )
+    let scaledImageSize = CGSize(
+      width: imageSizeRotated.width * scale,
+      height: imageSizeRotated.height * scale
+    )
+
+    let xOffset = (viewSize.width - scaledImageSize.width) / 2
+    let yOffset = (viewSize.height - scaledImageSize.height) / 2
+
+    // 4) map image-pixel rect into view-pixel rect
+    let viewX = imageRectUpright.minX * scale + xOffset
+    let viewY = imageRectUpright.minY * scale + yOffset
+    let viewW = imageRectUpright.width * scale
+    let viewH = imageRectUpright.height * scale
+    let viewRect = CGRect(x: viewX, y: viewY, width: viewW, height: viewH)
+
     return (imageRect, viewRect)
   }
 
@@ -229,7 +252,4 @@ extension UIInterfaceOrientation {
   }
 }
 
-enum ScalingOptions {
-  case avfoundation
-  case arkit(CGImagePropertyOrientation)
-}
+// Removed ScalingOptions enum in favor of direct orientation parameter

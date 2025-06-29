@@ -105,25 +105,17 @@ class VideoCapture: NSObject, FrameProvider {
   private func updateOrientation() {
     let orientation = UIDevice.current.orientation
     let angle: CGFloat
-
     switch orientation {
     case .portrait:
       angle = 90
     case .portraitUpsideDown:
       angle = 270
     case .landscapeLeft:
-      angle = 180
-    case .landscapeRight:
       angle = 0
+    case .landscapeRight:
+      angle = 180
     default:
       angle = 0
-    }
-
-    // Update video output connection
-    if let connection = videoOutput.connection(with: .video),
-      connection.isVideoRotationAngleSupported(angle)
-    {
-      connection.videoRotationAngle = angle
     }
 
     // Update preview view
@@ -272,36 +264,12 @@ extension VideoCapture: AVCaptureDataOutputSynchronizerDelegate {
       }
       return nil
     }
-    let imageToViewRect: (CGRect, (CGSize, CGSize)) -> CGRect = { imageRect, sizes in
-      let (imageSize, viewSize) = sizes
-      // 2) compute the uniform “fill” scale for image → view
-      let scale = max(
-        viewSize.width / imageSize.width,
-        viewSize.height / imageSize.height
-      )
-      let scaledImageSize = CGSize(
-        width: imageSize.width * scale,
-        height: imageSize.height * scale
-      )
-
-      // 3) compute centering offsets
-      let xOffset = (viewSize.width - scaledImageSize.width) / 2
-      let yOffset = (viewSize.height - scaledImageSize.height) / 2
-
-      // 4) map image-pixel rect into view-pixel rect
-      let viewX = imageRect.minX * scale + xOffset
-      let viewY = imageRect.minY * scale + yOffset
-      let viewW = imageRect.width * scale
-      let viewH = imageRect.height * scale
-      let viewRect = CGRect(x: viewX, y: viewY, width: viewW, height: viewH)
-      return viewRect
-
-    }
     // Package the captured data.
     delegate?.processFrame(
       self,
       buffer: pixelBuffer,
-      depthAt: depthProvider, imageToViewRect: imageToViewRect)
+      depthAt: depthProvider
+    )
   }
 
 }

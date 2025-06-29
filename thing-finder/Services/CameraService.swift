@@ -85,14 +85,11 @@ class CameraService {
   ///   - orientation: The orientation of the image
   /// - Returns: Result containing tracking requests or an error
   @discardableResult
-  func handleObjectTracking(buffer: CVPixelBuffer, scalingOption: ScalingOptions) -> Result<
-    [VNTrackObjectRequest], Error
-  > {
-    var orientation: CGImagePropertyOrientation = .up
-    if case .arkit(let ori) = scalingOption {
-      orientation = ori
-    }
-
+  func handleObjectTracking(buffer: CVPixelBuffer, orientation: CGImagePropertyOrientation)
+    -> Result<
+      [VNTrackObjectRequest], Error
+    >
+  {
     return objectTracker.performTracking(on: buffer, orientation: orientation)
   }
 
@@ -126,9 +123,9 @@ class CameraService {
   func performObjectDetection(
     buffer: CVPixelBuffer,
     filter: ((VNRecognizedObjectObservation) -> Bool),
-    scaling: ScalingOptions
+    orientation: CGImagePropertyOrientation
   ) -> [VNRecognizedObjectObservation] {
-    return objectDetector.detect(buffer, filter, scaling: scaling)
+    return objectDetector.detect(buffer, filter, orientation: orientation)
   }
 
   /// Creates a bounding box from a recognized object observation
@@ -136,8 +133,7 @@ class CameraService {
   ///   - observation: The recognized object observation
   ///   - bufferSize: The size of the buffer containing the observation
   ///   - viewSize: The size of the view where the bounding box will be displayed
-  ///   - imageToViewRect: A function to convert image rectangles to view rectangles
-  ///   - scalingOption: The scaling option to use
+  ///   - orientation: The orientation of the image
   ///   - label: The label for the bounding box
   ///   - color: The color for the bounding box
   /// - Returns: A BoundingBox object
@@ -145,8 +141,7 @@ class CameraService {
     from observation: VNDetectedObjectObservation,
     bufferSize: CGSize,
     viewSize: CGSize,
-    imageToViewRect: @escaping (CGRect, (CGSize, CGSize)) -> CGRect,
-    scalingOption: ScalingOptions,
+    orientation: CGImagePropertyOrientation,
     label: String,
     color: Color = .yellow
   ) -> BoundingBox {
@@ -154,8 +149,7 @@ class CameraService {
       from: observation,
       bufferSize: bufferSize,
       viewSize: viewSize,
-      imageToViewRect: imageToViewRect,
-      scalingOption: scalingOption,
+      orientation: orientation,
       label: label,
       color: color
     )
@@ -242,5 +236,5 @@ class CameraService {
     // Create a tracking request using the global function from ObjectTracker.swift
     return objectTracker.createTrackingRequest(for: observation)
   }
-  
+
 }

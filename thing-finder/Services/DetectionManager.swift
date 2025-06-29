@@ -21,7 +21,7 @@ protocol ObjectDetector {
   func detect(
     _ buffer: CVPixelBuffer,
     _ filter: ((VNRecognizedObjectObservation) -> Bool),
-    scaling: ScalingOptions
+    orientation: CGImagePropertyOrientation
   ) -> [VNRecognizedObjectObservation]
 
   /// Gets stable detections over consecutive frames
@@ -53,61 +53,52 @@ class DetectionManager: ObjectDetector {
 
   public func detect(
     _ imageBuffer: CVPixelBuffer, _ detectionFilterFn: (VNRecognizedObjectObservation) -> Bool,
-    scaling: ScalingOptions
+    orientation: CGImagePropertyOrientation
   ) -> [VNRecognizedObjectObservation] {
-    // .up becaue the buffer is being appropriately rotated for orientation changes already
-    let deviceOrientation: CGImagePropertyOrientation
-    switch scaling {
-    case .avfoundation:
-      deviceOrientation = .up  // Video connection is auto rotated
-    case .arkit(let orientation):
-      deviceOrientation = orientation
-
-    }
 
     let handler = VNImageRequestHandler(
-      cvPixelBuffer: imageBuffer, orientation: deviceOrientation,
-      options: [:])  // TODO
+      cvPixelBuffer: imageBuffer, orientation: orientation,
+      options: [:])
     do {
-      // MARK: - Process image with Image2Image model
-      //      lazy var visionRequest2: VNCoreMLRequest = {
-      //        do {
-      //          let visionModel = try VNCoreMLModel(for: Image2Image().model)
+      //       // MARK: - Process image with Image2Image model
+      //            lazy var visionRequest2: VNCoreMLRequest = {
+      //              do {
+      //                let visionModel = try VNCoreMLModel(for: Image2Image().model)
       //
-      //          let request = VNCoreMLRequest(
-      //            model: visionModel,
-      //            completionHandler: { [weak self] request, error in
-      //              if let results = request.results as? [VNPixelBufferObservation],
-      //                let pixelBuffer = results.first?.pixelBuffer
-      //              {
+      //                let request = VNCoreMLRequest(
+      //                  model: visionModel,
+      //                  completionHandler: { [weak self] request, error in
+      //                    if let results = request.results as? [VNPixelBufferObservation],
+      //                      let pixelBuffer = results.first?.pixelBuffer
+      //                    {
       //
-      //                let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-      //                let context = CIContext()
+      //                      let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+      //                      let context = CIContext()
       //
-      //                if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
-      //                  let uiImage = UIImage(cgImage: cgImage)
-      //                  uiImage.saveToPhotoLibrary(completion: { success, error in
-      //                    if success {
-      //                      print("✅ Successfully saved image to photo library")
-      //                    } else if let error = error {
-      //                      print(
-      //                        "❌ Error saving image to photo library: \(error.localizedDescription)")
+      //                      if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+      //                        let uiImage = UIImage(cgImage: cgImage)
+      //                        uiImage.saveToPhotoLibrary(completion: { success, error in
+      //                          if success {
+      //                            print("✅ Successfully saved image to photo library")
+      //                          } else if let error = error {
+      //                            print(
+      //                              "❌ Error saving image to photo library: \(error.localizedDescription)")
+      //                          }
+      //                        })
+      //                      }
       //                    }
-      //                  })
-      //                }
+      //                  }
+      //                )
+      //
+      //                request.imageCropAndScaleOption = .scaleFill
+      //                return request
+      //              } catch {
+      //                fatalError("Failed to create VNCoreMLModel: \(error)")
       //              }
-      //            }
-      //          )
+      //            }()
       //
-      //          request.imageCropAndScaleOption = .scaleFill
-      //          return request
-      //        } catch {
-      //          fatalError("Failed to create VNCoreMLModel: \(error)")
-      //        }
-      //      }()
-      //
-      //      //      // Uncomment the line below to enable image processing and saving
-      //      try handler.perform([visionRequest2])
+      //            //      // Uncomment the line below to enable image processing and saving
+      //            try handler.perform([visionRequest2])
       try handler.perform([visionRequest])
       guard let results = visionRequest.results as? [VNRecognizedObjectObservation] else {
         return []

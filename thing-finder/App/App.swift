@@ -6,6 +6,7 @@ struct ThingFinderApp: App {
   var body: some Scene {
     WindowGroup {
       MainTabView()
+//      ContentView(description: "always return false", searchMode: .objectFinder, targetClasses: ["laptop"])
     }
   }
 }

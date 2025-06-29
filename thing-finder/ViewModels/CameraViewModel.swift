@@ -148,8 +148,7 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
   ///   - depthAt: Function to get depth at a specific point
   ///   - imageToViewRect: Function to convert image rectangles to view rectangles
   func processFrame(
-    _ capture: any FrameProvider, buffer: CVPixelBuffer, depthAt: @escaping (CGPoint) -> Float?,
-    imageToViewRect: @escaping (CGRect, (CGSize, CGSize)) -> CGRect
+    _ capture: any FrameProvider, buffer: CVPixelBuffer, depthAt: @escaping (CGPoint) -> Float?
   ) {
     // Update FPS calculation
     cameraService.updateFPSCalculation()
@@ -160,19 +159,13 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
       return
     }
 
-    // Set up scaling option based on capture source type
-    let scalingOption: ScalingOptions
-    switch capture.sourceType {
-    case .arkit:
-      scalingOption = .arkit(imgUtils.cgOrientation(for: interfaceOrientation))
-    case .avfoundation:
-      scalingOption = .avfoundation
-    }
+    // Get the orientation based on interface orientation
+    let orientation = imgUtils.cgOrientation(for: interfaceOrientation)
 
     // Handle object tracking
     cameraService.handleObjectTracking(
       buffer: buffer,
-      scalingOption: scalingOption
+      orientation: orientation
     )
 
     // Process based on detection state
@@ -191,14 +184,17 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
           return label.confidence > CONFIDENCE_FILTER
             && self.targetClasses.contains(label.identifier)
         },
-        scaling: scalingOption
+        orientation: orientation
       )
 
       // Create bounding boxes and identified objects
       var boundingBoxes: [BoundingBox] = []
       var identifiedObjects: [IdentifiedObject] = []
       var frameCGImage: CGImage?
-
+      //            frameCGImage = frameCGImage ?? imgUtils.cvPixelBuffertoCGImage(buffer: buffer)
+      //            UIImage(cgImage: frameCGImage!).saveToPhotoLibrary { _, _ in
+      //              print("saved")
+      //            }
       // Process each candidate
       for observation in candidates {
         // Get the label for the observation
@@ -209,8 +205,7 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
           from: observation,
           bufferSize: bufferSize,
           viewSize: previewViewBounds.size,
-          imageToViewRect: imageToViewRect,
-          scalingOption: scalingOption,
+          orientation: orientation,
           label: label
         )
 
@@ -268,8 +263,7 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
             from: observation,
             bufferSize: bufferSize,
             viewSize: previewViewBounds.size,
-            imageToViewRect: imageToViewRect,
-            scalingOption: scalingOption,
+            orientation: orientation,
             label: candidate.box.label,
             color: .yellow
           )
@@ -291,18 +285,24 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
           from: observation,
           bufferSize: bufferSize,
           viewSize: previewViewBounds.size,
-          imageToViewRect: imageToViewRect,
-          scalingOption: scalingOption,
+          orientation: orientation,
           label: target.box.label,
           color: .green
         )
       }
 
+      let distanceMeters: Float?
       // Calculate distance to target if available using the center point of the view rect
-      let distanceMeters: Float? =
-        boundingBox != nil
-        ? depthAt(CGPoint(x: boundingBox!.viewRect.midX, y: boundingBox!.viewRect.midY)) : nil
-
+      switch capture.sourceType {
+      case .avfoundation:
+        distanceMeters =
+          boundingBox != nil
+          ? depthAt(CGPoint(x: boundingBox!.imageRect.midX, y: boundingBox!.imageRect.midY)) : nil
+      case .arkit:
+        distanceMeters =
+          boundingBox != nil
+          ? depthAt(CGPoint(x: boundingBox!.viewRect.midX, y: boundingBox!.viewRect.midY)) : nil
+      }
       // Process the found target
       let _ = cameraService.processFoundTarget(
         target: target,
@@ -370,6 +370,9 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
     // Crop the image to the bounding box
     guard let croppedImage = image.cropping(to: boundSafeBox) else { return }
     let uiImage = UIImage(cgImage: croppedImage)
+    //    uiImage.saveToPhotoLibrary { _, _ in
+    //
+    //    }
     let base64Img = uiImage.jpegData(compressionQuality: 1)?.base64EncodedString() ?? ""
 
     // Start verification

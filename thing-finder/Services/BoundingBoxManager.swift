@@ -17,8 +17,7 @@ protocol BoundingBoxCreator {
     from observation: VNDetectedObjectObservation,
     bufferSize: CGSize,
     viewSize: CGSize,
-    imageToViewRect: @escaping (CGRect, (CGSize, CGSize)) -> CGRect,
-    scalingOption: ScalingOptions,
+    orientation: CGImagePropertyOrientation,
     label: String,
     color: Color
   ) -> BoundingBox
@@ -49,8 +48,7 @@ class BoundingBoxManager: BoundingBoxCreator {
     from observation: VNDetectedObjectObservation,
     bufferSize: CGSize,
     viewSize: CGSize,
-    imageToViewRect: @escaping (CGRect, (CGSize, CGSize)) -> CGRect,
-    scalingOption: ScalingOptions,
+    orientation: CGImagePropertyOrientation,
     label: String,
     color: Color = .yellow
   ) -> BoundingBox {
@@ -59,12 +57,13 @@ class BoundingBoxManager: BoundingBoxCreator {
       for: observation.boundingBox,
       imageSize: bufferSize,
       viewSize: viewSize,
-      imageToView: imageToViewRect,
-      options: scalingOption
+      orientation: orientation
     )
 
     // Get the confidence from the observation
-    let confidence = (observation as? VNRecognizedObjectObservation)?.labels.first?.confidence ?? observation.confidence
+    let confidence =
+      (observation as? VNRecognizedObjectObservation)?.labels.first?.confidence
+      ?? observation.confidence
 
     // Create and return the bounding box
     return BoundingBox(

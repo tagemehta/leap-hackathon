@@ -5,9 +5,9 @@ import SwiftUI
 
 /// Direction enum for navigation guidance
 enum Direction: String {
-  case left = "left"
-  case right = "right"
-  case center = "center"
+  case left = "on your left"
+  case right = "on your right"
+  case center = "straight ahead"
 }
 
 /// Settings model that stores user preferences for the navigation experience.
@@ -49,17 +49,17 @@ class Settings: ObservableObject {
 
   /// Type of distance-to-volume curve
   @AppStorage("volume_curve") var volumeCurve: VolumeCurve = .linear
-  
+
   // MARK: - Camera Settings
-  
+
   /// Whether to use AR mode (false = Default/AVFoundation, true = ARKit)
   @AppStorage("use_ar_mode") var useARMode: Bool = false
-  
+
   /// Whether the device has LiDAR for distance estimation
   var hasLiDAR: Bool {
     return ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
   }
-  
+
   /// Recommended camera mode based on device capabilities
   var recommendedMode: CaptureSourceType {
     return hasLiDAR ? .avfoundation : .arkit
@@ -105,7 +105,7 @@ class Settings: ObservableObject {
   @AppStorage("enable_speech") var enableSpeech: Bool = true
 
   /// Speech rate (-1.0 to 1.0, where 0 is normal)
-  @AppStorage("speech_rate") var speechRate: Double = 0.0
+  @AppStorage("speech_rate") var speechRate: Double = 0.5
 
   // MARK: - Advanced Settings
 
@@ -187,5 +187,59 @@ extension Settings {
 
     // Map to interval range
     return beepIntervalMax - (beepIntervalMax - beepIntervalMin) * factor
+  }
+
+  /// Reset all settings to their default values. This is a temporary fix until we can find a better way to reset settings.
+  func resetToDefaults() {
+    // Set each property to its default value
+    // Navigation Settings
+    beepIntervalMin = 0.1
+    beepIntervalMax = 1.0
+    directionLeftThreshold = 0.33
+    directionRightThreshold = 0.66
+    speechRepeatInterval = 4.0
+    speechChangeInterval = 2.0
+
+    // Distance Feedback Settings
+    distanceMin = 0.2
+    distanceMax = 3.0
+    volumeMin = 0.2
+    volumeMax = 1.0
+    volumeCurve = .linear
+
+    // Camera Settings
+    useARMode = false
+
+    // Detection Settings
+    confidenceThreshold = 0.4
+    verificationCooldown = 2.0
+    targetLifetime = 700
+    maxLostFrames = 4
+
+    // Tracking Drift Thresholds
+    minIouThreshold = 0.7
+    maxCenterShift = 0.25
+    maxAreaShift = 0.35
+    minTrackingConfidence = 0.25
+
+    // Feedback Mode Settings
+    enableAudio = true
+    enableHaptics = false
+    enableSpeech = true
+    speechRate = 0.5
+
+    // Advanced Settings
+    smoothingAlpha = 0.2
+    fpsWindow = 10
+    batterySaver = false
+    developerMode = false
+
+    // Force UserDefaults to synchronize changes
+    UserDefaults.standard.synchronize()
+
+    // Notify observers that all properties have changed
+    self.objectWillChange.send()
+
+    print("Settings reset to defaults")
   }
 }
