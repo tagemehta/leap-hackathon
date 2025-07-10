@@ -9,8 +9,8 @@ import SwiftUI
 /// • Easy to understand – play → schedule next, only five core vars.
 /// • Ready for change   – all timing contained in `scheduleNextBeep()`.
 final class SmoothBeeper {
-    // Settings for configurable parameters
-    private let settings: Settings
+  // Settings for configurable parameters
+  private let settings: Settings
   // MARK: – Public configuration
   private let alpha: Double = 0.2  // Smoothing factor for EMA
   private let minInterval: TimeInterval = 0.1
@@ -34,9 +34,7 @@ final class SmoothBeeper {
     self.soundURL = url
     configureAudioSession()
     generateClickSound()
-    
-    // Add observers for app lifecycle
-    #if os(iOS)
+
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(handleAppDidEnterBackground),
@@ -49,15 +47,14 @@ final class SmoothBeeper {
       name: UIApplication.willEnterForegroundNotification,
       object: nil
     )
-    #endif
   }
 
   deinit {
     NotificationCenter.default.removeObserver(self)
     stop()
-//    #if os(iOS)
-//    try? AVAudioSession.sharedInstance().setActive(false)
-//    #endif
+    //    #if os(iOS)
+    //    try? AVAudioSession.sharedInstance().setActive(false)
+    //    #endif
   }
 
   // MARK: – Public API
@@ -71,7 +68,8 @@ final class SmoothBeeper {
     stop()  // Clean slate
     // Smooth the interval using exponential moving average based on settings
     targetInterval = max(minInterval, interval)
-    smoothedInterval = settings.smoothingAlpha * targetInterval + (1 - settings.smoothingAlpha) * smoothedInterval
+    smoothedInterval =
+      settings.smoothingAlpha * targetInterval + (1 - settings.smoothingAlpha) * smoothedInterval
     lastBeepTime = Date()
     playBeep()  // Play immediately
     scheduleNextBeep(after: smoothedInterval)
@@ -133,22 +131,20 @@ final class SmoothBeeper {
   private let soundURL: URL
 
   private func configureAudioSession() {
-    #if os(iOS)
-      let session = AVAudioSession.sharedInstance()
-      do {
-        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .duckOthers])
-        try session.setActive(true, options: .notifyOthersOnDeactivation)
-      } catch {
-        print("Failed to configure audio session: \(error)")
-      }
-    #endif
+    let session = AVAudioSession.sharedInstance()
+    do {
+      try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .duckOthers])
+      try session.setActive(true, options: .notifyOthersOnDeactivation)
+    } catch {
+      print("Failed to configure audio session: \(error)")
+    }
   }
-  
+
   @objc private func handleAppDidEnterBackground() {
     wasPlayingBeforeBackground = (timer != nil)
     stop()
   }
-  
+
   @objc private func handleWillEnterForeground() {
     if wasPlayingBeforeBackground {
       // Restart with the same interval

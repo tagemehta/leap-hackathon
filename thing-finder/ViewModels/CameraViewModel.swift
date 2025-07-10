@@ -295,9 +295,10 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
       // Calculate distance to target if available using the center point of the view rect
       switch capture.sourceType {
       case .avfoundation:
+        let normalizedBox = VNNormalizedRectForImageRect(boundingBox!.imageRect, Int(bufferSize.width), Int(bufferSize.height))
         distanceMeters =
           boundingBox != nil
-          ? depthAt(CGPoint(x: boundingBox!.imageRect.midX, y: boundingBox!.imageRect.midY)) : nil
+        ? depthAt(CGPoint(x: normalizedBox.midX, y: normalizedBox.midY)) : nil
       case .arkit:
         distanceMeters =
           boundingBox != nil

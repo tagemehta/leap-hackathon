@@ -250,10 +250,14 @@ extension VideoCapture: AVCaptureDataOutputSynchronizerDelegate {
         let depth = depthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)
         let depthBuf = depth.depthDataMap
         CVPixelBufferLockBaseAddress(depthBuf, .readOnly)
+        let width = CVPixelBufferGetWidth(depthBuf)
+        let height = CVPixelBufferGetHeight(depthBuf)
+        let normalizedPoint = CGPoint(x: Int(point.x) * width, y: Int(point.y) * height)
         if let base = CVPixelBufferGetBaseAddress(depthBuf) {
           let rowBytes = CVPixelBufferGetBytesPerRow(depthBuf)
           let ptr = base.advanced(
-            by: Int(point.y) * rowBytes + Int(point.x) * MemoryLayout<Float32>.size)
+            by: Int(normalizedPoint.y) * rowBytes + Int(normalizedPoint.x)
+              * MemoryLayout<Float32>.size)
           let val = ptr.load(as: Float32.self)
           if val.isFinite && val > 0 {
             distanceMeters = val
