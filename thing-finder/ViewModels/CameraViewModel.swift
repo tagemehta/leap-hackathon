@@ -249,6 +249,13 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
           self?.updateBoundingBoxes(to: newBoxes)
         }
       )
+      // Should probably be moved to the processStateTransitions
+      if identifiedObjects.count > 0 {
+        cameraService.handleObjectTracking(
+          buffer: buffer,
+          orientation: orientation
+        )
+      }
 
     case .verifying(let candidates):
       // When in verifying state, we don't need to process candidates again
@@ -279,9 +286,9 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
       // Get the observation from the tracking request
       let observation = target.trackingRequest.results?.first as? VNDetectedObjectObservation
       // Create a bounding box for the observation if available
-      var boundingBox: BoundingBox?
+//      var boundingBox: BoundingBox?
       if let observation = observation {
-        boundingBox = cameraService.createBoundingBox(
+        let boundingBox = cameraService.createBoundingBox(
           from: observation,
           bufferSize: bufferSize,
           viewSize: previewViewBounds.size,
@@ -289,31 +296,34 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
           label: target.box.label,
           color: .green
         )
+        let distanceMeters: Float?
+        // Calculate distance to target if available using the center point of the view rect
+        switch capture.sourceType {
+        case .avfoundation:
+          let normalizedBox = VNNormalizedRectForImageRect(
+            boundingBox.imageRect, Int(bufferSize.width), Int(bufferSize.height))
+          distanceMeters = depthAt(CGPoint(x: normalizedBox.midX, y: normalizedBox.midY))
+        case .arkit:
+          distanceMeters = depthAt(CGPoint(x: boundingBox.viewRect.midX, y: boundingBox.viewRect.midY))
+        }
+        // Process the found target
+        let _ = cameraService.processFoundTarget(
+          target: target,
+          observation: observation,
+          boundingBox: boundingBox,
+          distanceMeters: distanceMeters == nil ? nil : Double(distanceMeters!),
+          updateBoundingBoxes: { [weak self] newBoxes in
+            self?.updateBoundingBoxes(to: newBoxes)
+          }
+        )
+      } else {
+        let _ = cameraService.processFoundTarget(target: target, observation: nil, boundingBox: nil, distanceMeters: nil, updateBoundingBoxes: { [weak self] newBoxes in
+          self?.updateBoundingBoxes(to: newBoxes)
+        })
       }
 
-      let distanceMeters: Float?
-      // Calculate distance to target if available using the center point of the view rect
-      switch capture.sourceType {
-      case .avfoundation:
-        let normalizedBox = VNNormalizedRectForImageRect(boundingBox!.imageRect, Int(bufferSize.width), Int(bufferSize.height))
-        distanceMeters =
-          boundingBox != nil
-        ? depthAt(CGPoint(x: normalizedBox.midX, y: normalizedBox.midY)) : nil
-      case .arkit:
-        distanceMeters =
-          boundingBox != nil
-          ? depthAt(CGPoint(x: boundingBox!.viewRect.midX, y: boundingBox!.viewRect.midY)) : nil
-      }
-      // Process the found target
-      let _ = cameraService.processFoundTarget(
-        target: target,
-        observation: observation,
-        boundingBox: boundingBox,
-        distanceMeters: distanceMeters == nil ? nil : Double(distanceMeters!),
-        updateBoundingBoxes: { [weak self] newBoxes in
-          self?.updateBoundingBoxes(to: newBoxes)
-        }
-      )
+
+
     }
   }
 
