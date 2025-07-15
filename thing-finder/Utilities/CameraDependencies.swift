@@ -38,7 +38,7 @@ extension CameraDependencies {
             targetTextDescription: targetTextDescription,
             settings: settings,
             detectionManager: detectionManager,
-            navigationManager: NavigationManager(settings: settings),
+            navigationManager: DefaultNavigationManager(settings: settings),
             imageUtils: ImageUtilities()
         )
     }

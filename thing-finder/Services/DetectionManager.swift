@@ -10,27 +10,7 @@ import Photos
 import SwiftUI
 import Vision
 
-/// Protocol defining object detection functionality
-protocol ObjectDetector {
-  /// Detects objects in a frame
-  /// - Parameters:
-  ///   - buffer: The pixel buffer containing the frame
-  ///   - filter: A filter function to apply to the detections
-  ///   - scaling: The scaling option to use
-  /// - Returns: An array of recognized object observations
-  func detect(
-    _ buffer: CVPixelBuffer,
-    _ filter: ((VNRecognizedObjectObservation) -> Bool),
-    orientation: CGImagePropertyOrientation
-  ) -> [VNRecognizedObjectObservation]
 
-  /// Gets stable detections over consecutive frames
-  /// - Returns: An array of recognized object observations that are stable
-  func stableDetections(
-    iouThreshold: CGFloat,
-    requiredConsecutiveFrames: Int
-  ) -> [VNRecognizedObjectObservation]
-}
 
 class DetectionManager: ObjectDetector {
   private var mlModel: VNCoreMLModel
@@ -52,7 +32,8 @@ class DetectionManager: ObjectDetector {
   }
 
   public func detect(
-    _ imageBuffer: CVPixelBuffer, _ detectionFilterFn: (VNRecognizedObjectObservation) -> Bool,
+    _ imageBuffer: CVPixelBuffer,
+    filter detectionFilterFn: (VNRecognizedObjectObservation) -> Bool,
     orientation: CGImagePropertyOrientation
   ) -> [VNRecognizedObjectObservation] {
 
@@ -176,28 +157,28 @@ class DetectionManager: ObjectDetector {
 
 }
 
-extension CGRect {
-  /// Clamps the rectangle's coordinates to be within [0,1] range
-  func clampedToBounds(_ bounds: CGRect) -> CGRect {
-    let minX = max(bounds.minX, min(bounds.maxX, self.minX))
-    let minY = max(bounds.minY, min(bounds.maxY, self.minY))
-    let maxX = max(bounds.minX, min(bounds.maxX, self.maxX))
-    let maxY = max(bounds.minY, min(bounds.maxY, self.maxY))
+// extension CGRect {
+//   /// Clamps the rectangle's coordinates to be within [0,1] range
+//   func clampedToBounds(_ bounds: CGRect) -> CGRect {
+//     let minX = max(bounds.minX, min(bounds.maxX, self.minX))
+//     let minY = max(bounds.minY, min(bounds.maxY, self.minY))
+//     let maxX = max(bounds.minX, min(bounds.maxX, self.maxX))
+//     let maxY = max(bounds.minY, min(bounds.maxY, self.maxY))
 
-    // Ensure width and height are not negative
-    let width = max(bounds.minX, maxX - minX)
-    let height = max(bounds.minY, maxY - minY)
+//     // Ensure width and height are not negative
+//     let width = max(bounds.minX, maxX - minX)
+//     let height = max(bounds.minY, maxY - minY)
 
-    return CGRect(x: minX, y: minY, width: width, height: height)
-  }
+//     return CGRect(x: minX, y: minY, width: width, height: height)
+//   }
 
-  func iou(with rect: CGRect) -> CGFloat {
-    let intersection = self.intersection(rect)
-    let intersectionArea = intersection.width * intersection.height
-    let unionArea = width * height + rect.width * rect.height - intersectionArea
-    return intersectionArea / unionArea
-  }
-}
+//   func iou(with rect: CGRect) -> CGFloat {
+//     let intersection = self.intersection(rect)
+//     let intersectionArea = intersection.width * intersection.height
+//     let unionArea = width * height + rect.width * rect.height - intersectionArea
+//     return intersectionArea / unionArea
+//   }
+// }
 
 extension UIImage {
   func saveToPhotoLibrary(completion: @escaping (Bool, Error?) -> Void) {

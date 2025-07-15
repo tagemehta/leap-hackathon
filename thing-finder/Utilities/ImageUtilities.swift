@@ -9,7 +9,8 @@ import CoreMedia
 import SwiftUI
 import Vision
 
-class ImageUtilities {
+public final class ImageUtilities {
+  public static let shared = ImageUtilities()
   private var ciImageContext: CIContext = CIContext()
 
   // https://machinethink.net/blog/bounding-boxes/

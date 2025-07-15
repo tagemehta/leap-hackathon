@@ -23,9 +23,9 @@ func bestCaptureDevice() -> AVCaptureDevice {
     print("LiDAR depth camera found")
     return device
   } else if let device = AVCaptureDevice.default(
-    .builtInTelephotoCamera, for: .video, position: .back)
+    .builtInDualWideCamera, for: .video, position: .back)
   {
-    print("telephoto")
+    print("dual wide")
     return device
   } else if let device = AVCaptureDevice.default(.builtInDualCamera, for: .video, position: .back) {
     print("dual")
@@ -173,9 +173,10 @@ class VideoCapture: NSObject, FrameProvider {
       outputs.append(videoOutput)
     }
 
-    if AVCaptureDevice.default(.builtInLiDARDepthCamera, for: .video, position: .back) != nil,
+    if !captureDevice.formats.filter({ format in
+      !format.supportedDepthDataFormats.isEmpty
+    }).isEmpty {
       captureSession.canAddOutput(depthOutput)
-    {
       depthOutput.isFilteringEnabled = true
       depthOutput.alwaysDiscardsLateDepthData = true
       captureSession.addOutput(depthOutput)

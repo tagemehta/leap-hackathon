@@ -10,15 +10,9 @@ import CoreHaptics
 import Foundation
 import Vision
 
-enum NavEvent {
-  case start(targetClasses: [String], targetTextDescription: String)
-  case searching
-  case noMatch
-  case lost
-  case found
-  case expired
-}
-class NavigationManager {
+// NavEvent is defined centrally in PipelineProtocols.swift
+
+public class DefaultNavigationManager: NavigationManager  {
   // Settings for configurable parameters
   private let settings: Settings
   var lastDirection: Direction?
@@ -30,7 +24,7 @@ class NavigationManager {
   init(settings: Settings = Settings()) {
     self.settings = settings
   }
-  func handle(
+  public func handle(
     _ event: NavEvent,
     box: CGRect? = nil,
     distanceMeters: Double? = nil
