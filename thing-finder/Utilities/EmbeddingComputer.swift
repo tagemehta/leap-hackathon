@@ -1,22 +1,24 @@
-//  EmbeddingComputer.swift
-//  thing-finder
-//
-//  Stateless helper that wraps the Vision feature-print request used for
-//  computing 128-D embeddings from image crops.  Kept as a lightweight
-//  utility (not a full DI service) so callers can be unit-tested easily and
-//  we avoid premature abstraction.
-//
-//  If future requirements demand caching or a different embedding model, this
-//  helper can be promoted to a protocol-backed service without touching call
-//  sites.
+/// A thin wrapper around Vision’s feature-print API for computing image embeddings.
+///
+/// `EmbeddingComputer` offers two convenience helpers:
+/// * `compute(cgImage:)` – computes a feature-print for the entire image.
+/// * `compute(cgImage:boundingBox:orientation:imageSize:)` – crops using a Vision-style
+///   normalised bounding box before computing the embedding.
+///
+/// The utility is intentionally *stateless* so it can be invoked from anywhere without
+/// dependency injection. If future requirements demand caching or a different embedding
+/// model, the enum can be swapped for a protocol-backed service without touching
+/// call-sites.
 
 import CoreGraphics
 import CoreVideo
 import Vision
 
 public enum EmbeddingComputer {
-  /// Computes a Vision feature-print embedding for a given `CGImage` crop.
-  /// ‑ Returns: `VNFeaturePrintObservation` on success, else `nil`.
+  /// Computes a Vision feature-print embedding for an entire `CGImage`.
+///
+/// - Parameter cgImage: The image to embed.
+/// - Returns: A `VNFeaturePrintObservation` on success; `nil` if Vision fails.
   public static func compute(cgImage: CGImage) -> VNFeaturePrintObservation? {
     let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
     let request = VNGenerateImageFeaturePrintRequest()
@@ -28,8 +30,15 @@ public enum EmbeddingComputer {
     }
   }
 
-  /// Convenience that crops the pixel buffer using the **normalized** bounding
-  /// box and forwards to `compute(cgImage:)`.
+  /// Crops the supplied image to `boundingBox` before producing an embedding.
+///
+/// - Parameters:
+///   - cgImage: Full image in *upright* orientation.
+///   - boundingBox: Normalised Vision rectangle (origin top-left, 0-1).
+///   - orientation: Orientation that the buffer must be rotated to be upright (same as passed to Vision).
+///   - imgUtils: Helper used for coordinate transforms. Defaults to `.shared`.
+///   - imageSize: Pixel dimensions of `cgImage`.
+/// - Returns: The feature-print for the crop, or `nil` on failure.
   public static func compute(
     cgImage: CGImage,
     boundingBox: CGRect,  // normalised (0-1, Vision)

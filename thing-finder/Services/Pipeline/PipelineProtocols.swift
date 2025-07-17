@@ -14,7 +14,7 @@ import Vision
 
 // MARK: - CaptureType
 
-public enum CaptureType {
+public enum CaptureSourceType {
   case avFoundation
   case arKit
 }
@@ -87,6 +87,6 @@ public enum NavEvent {
 
 
 
-public protocol NavigationManager {
+public protocol NavigationManagerProtocol {
   func handle(_ event: NavEvent, box: CGRect?, distanceMeters: Double?)
 }

@@ -1,9 +1,22 @@
-//
-//  NavigationManager.swift
-//  thing-finder
-//
-//  Created by Tage Mehta on 6/12/25.
-//
+/// NavigationManager
+/// -----------------------
+/// Provides user-facing navigation feedback (speech + haptics) based on
+/// `NavEvent`s emitted from `FramePipelineCoordinator`.
+///
+/// High-level logic:
+/// * `.start` – announces search target classes / description.
+/// * `.searching` – periodically repeats "Searching" to reassure the user.
+/// * `.found` – converts candidate bounding-box → auditory beeps & spoken
+///   direction/distance.
+/// * `.lost`, `.expired`, `.noMatch` – stop feedback & speak status.
+///
+/// The navigation policy is intentionally simple and UI-agnostic; concrete UI
+/// layers (SwiftUI, UIKit) subscribe to the `NavigationManager` interface only
+/// for side-effectful feedback.
+///
+/// Thread-safety: All public methods are expected on main thread (they interact
+/// with AVSpeechSynthesizer & CoreHaptics).
+///
 
 import AVFoundation
 import CoreHaptics
@@ -12,7 +25,7 @@ import Vision
 
 // NavEvent is defined centrally in PipelineProtocols.swift
 
-public class DefaultNavigationManager: NavigationManager  {
+public class NavigationManager: NavigationManagerProtocol  {
   // Settings for configurable parameters
   private let settings: Settings
   var lastDirection: Direction?

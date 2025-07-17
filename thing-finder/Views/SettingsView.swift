@@ -3,23 +3,21 @@ import SwiftUI
 
 struct SettingsView: View {
   @ObservedObject var settings: Settings
-  @State private var showAdvancedSettings = false
+
 
   var body: some View {
     NavigationView {
       List {
-        // MARK: - Navigation Settings
+        // MARK: - Navigation Feedback
         Section(header: Text("Navigation Feedback")) {
-          Toggle("Audio Beeps", isOn: $settings.enableAudio)
-          Toggle("Speech Guidance", isOn: $settings.enableSpeech)
-          Toggle("Haptic Feedback", isOn: $settings.enableHaptics)
+//          Toggle("Audio Beeps", isOn: $settings.enableAudio)
+//          Toggle("Speech Guidance", isOn: $settings.enableSpeech)
+//          Toggle("Haptic Feedback", isOn: $settings.enableHaptics)
 
-          if settings.enableSpeech {
-            VStack(alignment: .leading) {
-              Text("Speech Rate: \(String(format: "%.1f", settings.speechRate))")
-              Slider(value: $settings.speechRate, in: -1...1, step: 0.1)
-                .accessibilityLabel("Speech Rate")
-            }
+          VStack(alignment: .leading) {
+            Text("Speech Rate: \(String(format: "%.1f", settings.speechRate))")
+            Slider(value: $settings.speechRate, in: -1...1, step: 0.1)
+              .accessibilityLabel("Speech Rate")
           }
         }
 
@@ -87,7 +85,7 @@ struct SettingsView: View {
 
           VStack(alignment: .leading) {
             Text("Max Distance: \(String(format: "%.1f", settings.distanceMax))m")
-            Slider(value: $settings.distanceMax, in: 1.0...5.0, step: 0.5)
+            Slider(value: $settings.distanceMax, in: 1.0...20.0, step: 0.5)
               .accessibilityLabel("Maximum Distance")
           }
 
@@ -99,66 +97,51 @@ struct SettingsView: View {
         }
 
         // MARK: - Camera Settings
-        Section(header: Text("Camera Mode")) {
-          Toggle(isOn: $settings.useARMode) {
-            VStack(alignment: .leading, spacing: 4) {
-              Text(settings.useARMode ? "AR Mode" : "Default Mode")
-
-              if settings.hasLiDAR && settings.useARMode {
-                Text(
-                  "Recommended: Switch to default mode. Able to provide same functionality"
-                )
-                .font(.caption)
-                .foregroundColor(.secondary)
-              } else if !settings.useARMode {
-                Text("Optional: Switch to AR Mode for depth estimation")
-                  .font(.caption)
-                  .foregroundColor(.secondary)
-              }
-            }
-          }
-
-          if settings.useARMode {
-            VStack(alignment: .leading, spacing: 4) {
-              HStack(spacing: 4) {
-                Image(systemName: "battery.25")
-                Text("Note: AR mode uses more battery")
-              }
-              .font(.caption)
-              .foregroundColor(.orange)
-
-              if settings.hasLiDAR {
-                Text(
-                  "LiDAR is available on this device. Default mode is recommended for most use cases."
-                )
-                .font(.caption2)
-                .foregroundColor(.secondary)
-              } else {
-                Text("AR mode provides better distance estimation on devices without LiDAR.")
-                  .font(.caption2)
-                  .foregroundColor(.secondary)
-              }
-            }
-            .padding(.top, 4)
-          }
-        }
-
-        // MARK: - Developer Mode Toggle
-        Section {
-          Toggle("Developer Mode", isOn: $settings.developerMode)
-            .onChange(of: settings.developerMode) {
-              if !settings.developerMode {
-                showAdvancedSettings = false
-              }
-            }
-
-          if settings.developerMode {
-            Toggle("Show Advanced Settings", isOn: $showAdvancedSettings)
-          }
-        }
-
+//        Section(header: Text("Camera Mode")) {
+//          Toggle(isOn: $settings.useARMode) {
+//            VStack(alignment: .leading, spacing: 4) {
+//              Text(settings.useARMode ? "AR Mode" : "Default Mode")
+//
+//              if settings.hasLiDAR && settings.useARMode {
+//                Text(
+//                  "Recommended: Switch to default mode. Able to provide same functionality"
+//                )
+//                .font(.caption)
+//                .foregroundColor(.secondary)
+//              } else if !settings.useARMode {
+//                Text("Optional: Switch to AR Mode for depth estimation")
+//                  .font(.caption)
+//                  .foregroundColor(.secondary)
+//              }
+//            }
+//          }
+//
+//          if settings.useARMode {
+//            VStack(alignment: .leading, spacing: 4) {
+//              HStack(spacing: 4) {
+//                Image(systemName: "battery.25")
+//                Text("Note: AR mode uses more battery")
+//              }
+//              .font(.caption)
+//              .foregroundColor(.orange)
+//
+//              if settings.hasLiDAR {
+//                Text(
+//                  "LiDAR is available on this device. Default mode is recommended for most use cases."
+//                )
+//                .font(.caption2)
+//                .foregroundColor(.secondary)
+//              } else {
+//                Text("AR mode provides better distance estimation on devices without LiDAR.")
+//                  .font(.caption2)
+//                  .foregroundColor(.secondary)
+//              }
+//            }
+//            .padding(.top, 4)
+//          }
+//        }
         // MARK: - Advanced Settings (Developer Mode)
-        if settings.developerMode && showAdvancedSettings {
+        if settings.developerMode {
           Section(header: Text("Detection Settings")) {
             VStack(alignment: .leading) {
               Text("Confidence: \(String(format: "%.2f", settings.confidenceThreshold))")
@@ -211,16 +194,6 @@ struct SettingsView: View {
               Slider(value: $settings.minTrackingConfidence, in: 0.1...0.8, step: 0.05)
                 .accessibilityLabel("Minimum Tracking Confidence")
             }
-          }
-
-          Section(header: Text("Performance")) {
-            Toggle("Battery Saver Mode", isOn: $settings.batterySaver)
-
-            Stepper(
-              "FPS Window: \(settings.fpsWindow) frames",
-              value: $settings.fpsWindow,
-              in: 5...30,
-              step: 5)
           }
         }
 

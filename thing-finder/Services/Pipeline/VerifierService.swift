@@ -1,3 +1,28 @@
+/// VerifierService
+/// --------------
+/// Asynchronously verifies **candidate crops** against the user’s target description
+/// using a Large Language Model (LLM) image-understanding API.
+///
+/// High-level flow performed each frame by `tick(...)`:
+/// 1. Fetch candidates in `unknown` match state from the shared `CandidateStore`.
+/// 2. Obtain a `CGImage` for the full frame once (lazy).
+/// 3. Crop each candidate’s bounding box to an RGB JPEG and base-64 encode it.
+/// 4. Call `LLMVerifier.verify(imageData:)` to classify whether the crop matches
+///    the natural-language description.
+/// 5. Update the `CandidateStore` with `.matched`, or remove the candidate if it
+///    fails verification.
+///
+/// Threading / Combine:
+/// * Network calls are performed off-main; updates to `CandidateStore` occur
+///   on whichever scheduler Combine delivers on (store is thread-safe).
+/// * A small `Set<AnyCancellable>` is kept per instance
+///
+/// Dependencies injected:
+/// * `LLMVerifier` – abstraction over the external LLM API.
+/// * `ImageUtilities` – for bounding-box → pixel rect mapping & buffer → image.
+///
+/// Created by Tage Mehta on 6/12/25.
+//
 //  DefaultVerifierService.swift
 //  thing-finder
 //

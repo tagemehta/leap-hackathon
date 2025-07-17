@@ -62,7 +62,7 @@ class Settings: ObservableObject {
 
   /// Recommended camera mode based on device capabilities
   var recommendedMode: CaptureSourceType {
-    return hasLiDAR ? .avfoundation : .arkit
+    return hasLiDAR ? .avFoundation : .arKit
   }
 
   // MARK: - Detection Settings
@@ -114,9 +114,6 @@ class Settings: ObservableObject {
 
   /// Number of frames to average for FPS calculation
   @AppStorage("fps_window") var fpsWindow: Int = 10
-
-  /// Enable battery saving mode (reduces processing)
-  @AppStorage("battery_saver") var batterySaver: Bool = false
 
   /// Enable developer mode with additional settings
   @AppStorage("developer_mode") var developerMode: Bool = false
@@ -231,7 +228,6 @@ extension Settings {
     // Advanced Settings
     smoothingAlpha = 0.2
     fpsWindow = 10
-    batterySaver = false
     developerMode = false
 
     // Force UserDefaults to synchronize changes

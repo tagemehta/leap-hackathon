@@ -9,7 +9,9 @@
 //  calls in `DispatchQueue.main.async { ... }`.
 
 import Combine
+import CoreGraphics
 import Foundation
+import Vision
 
 /// Store publishes snapshots so observers have value-type semantics.
 public final class CandidateStore: ObservableObject {
@@ -36,6 +38,49 @@ public final class CandidateStore: ObservableObject {
 
   public func clear() {
     candidates.removeAll()
+  }
+
+  // MARK: Upsert helpers
+  /// Insert a new candidate if it is **not** a duplicate. Returns the new id when inserted, otherwise `nil`.
+  @discardableResult
+  public func upsert(
+    observation: VNRecognizedObjectObservation,
+    cgImage: CGImage,
+    imageSize: CGSize,
+    orientation: CGImagePropertyOrientation = .up
+  ) -> CandidateID? {
+    let bbox = observation.boundingBox
+    guard !containsDuplicateOf(bbox) else { return nil }
+
+    // Build tracking request
+    let req = VNTrackObjectRequest(detectedObjectObservation: observation)
+    req.trackingLevel = .accurate
+
+    // Compute initial embedding for drift-repair & verifier
+    let embedding = EmbeddingComputer.compute(
+      cgImage: cgImage,
+      boundingBox: bbox,
+      orientation: orientation,
+      imageSize: imageSize
+    )
+
+    let id = CandidateID()
+    let cand = Candidate(
+      id: id,
+      trackingRequest: req,
+      boundingBox: bbox,
+      embedding: embedding)
+    candidates[id] = cand
+    return id
+  }
+
+  /// Keep only the most recently updated *matched* candidate (if any).
+  public func pruneToSingleMatched() {
+    let matched = candidates.values.filter { $0.isMatched }
+    guard let winner = matched.max(by: { $0.lastUpdated < $1.lastUpdated }) else { return }
+    for (id, _) in candidates where id != winner.id {
+      candidates.removeValue(forKey: id)
+    }
   }
 
   // Utility: check if this is likely a duplicate of an existing candidate using IoU and center distance
@@ -65,5 +110,11 @@ public final class CandidateStore: ObservableObject {
   public subscript(id: CandidateID) -> Candidate? {
     get { candidates[id] }
     set { candidates[id] = newValue }
+  }
+}
+
+extension CandidateStore {
+  var hasActiveMatch: Bool {
+    candidates.values.contains { $0.matchStatus == .matched }
   }
 }

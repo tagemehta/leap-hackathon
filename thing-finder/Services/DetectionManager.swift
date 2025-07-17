@@ -1,16 +1,24 @@
-//
-//  DetectionManager.swift
-//  thing-finder
-//
-//  Created by Tage Mehta on 6/9/25.
-//
+/// DetectionManager
+/// -----------------
+/// Concrete implementation of `ObjectDetector` wrapping a CoreML model via Vision.
+///
+/// Responsibilities per frame:
+/// * Run `VNCoreMLRequest` against the camera `CVPixelBuffer`.
+/// * Apply caller-supplied filter to limit classes of interest.
+/// * Return `VNRecognizedObjectObservation` array to the pipeline.
+///
+/// Additional helpers:
+/// * `stableDetections(...)` – rudimentary temporal smoothing by counting how many
+///   consecutive frames a bounding box persists (based on IoU matching).
+///
+/// Thread-safety: Intended to be called from a background queue; mutates
+/// `lastDetections` & `detectionStability` internally but not shared across threads.
+///
 import AVFoundation
 // Extension to handle photo library access
 import Photos
 import SwiftUI
 import Vision
-
-
 
 class DetectionManager: ObjectDetector {
   private var mlModel: VNCoreMLModel
@@ -157,45 +165,22 @@ class DetectionManager: ObjectDetector {
 
 }
 
-// extension CGRect {
-//   /// Clamps the rectangle's coordinates to be within [0,1] range
-//   func clampedToBounds(_ bounds: CGRect) -> CGRect {
-//     let minX = max(bounds.minX, min(bounds.maxX, self.minX))
-//     let minY = max(bounds.minY, min(bounds.maxY, self.minY))
-//     let maxX = max(bounds.minX, min(bounds.maxX, self.maxX))
-//     let maxY = max(bounds.minY, min(bounds.maxY, self.maxY))
+// extension UIImage {
+//   func saveToPhotoLibrary(completion: @escaping (Bool, Error?) -> Void) {
+//     PHPhotoLibrary.requestAuthorization { status in
+//       guard status == .authorized else {
+//         completion(
+//           false,
+//           NSError(
+//             domain: "PhotoLibrary", code: 1,
+//             userInfo: [NSLocalizedDescriptionKey: "No permission to access photo library"]))
+//         return
+//       }
 
-//     // Ensure width and height are not negative
-//     let width = max(bounds.minX, maxX - minX)
-//     let height = max(bounds.minY, maxY - minY)
-
-//     return CGRect(x: minX, y: minY, width: width, height: height)
-//   }
-
-//   func iou(with rect: CGRect) -> CGFloat {
-//     let intersection = self.intersection(rect)
-//     let intersectionArea = intersection.width * intersection.height
-//     let unionArea = width * height + rect.width * rect.height - intersectionArea
-//     return intersectionArea / unionArea
+//       PHPhotoLibrary.shared().performChanges(
+//         {
+//           PHAssetChangeRequest.creationRequestForAsset(from: self)
+//         }, completionHandler: completion)
+//     }
 //   }
 // }
-
-extension UIImage {
-  func saveToPhotoLibrary(completion: @escaping (Bool, Error?) -> Void) {
-    PHPhotoLibrary.requestAuthorization { status in
-      guard status == .authorized else {
-        completion(
-          false,
-          NSError(
-            domain: "PhotoLibrary", code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "No permission to access photo library"]))
-        return
-      }
-
-      PHPhotoLibrary.shared().performChanges(
-        {
-          PHAssetChangeRequest.creationRequestForAsset(from: self)
-        }, completionHandler: completion)
-    }
-  }
-}

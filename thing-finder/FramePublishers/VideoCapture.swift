@@ -44,7 +44,7 @@ class VideoCapture: NSObject, FrameProvider {
   // MARK: - FrameProvider Protocol Properties
   public var previewView: UIView { _previewView as UIView }
   private var _previewView: AVPreviewView
-  public var sourceType: CaptureSourceType = .avfoundation
+  public var sourceType: CaptureSourceType = .avFoundation
 
   // Rotation handling
   private(set) var videoRotationAngle: CGFloat = 0 {
@@ -253,7 +253,9 @@ extension VideoCapture: AVCaptureDataOutputSynchronizerDelegate {
         CVPixelBufferLockBaseAddress(depthBuf, .readOnly)
         let width = CVPixelBufferGetWidth(depthBuf)
         let height = CVPixelBufferGetHeight(depthBuf)
-        let normalizedPoint = CGPoint(x: Int(point.x) * width, y: Int(point.y) * height)
+        let x = max(0, min(width - 1, Int(point.x * CGFloat(width))))
+        let y = max(0, min(height - 1, Int(point.y * CGFloat(height))))
+        let normalizedPoint = CGPoint(x: x, y: y)
         if let base = CVPixelBufferGetBaseAddress(depthBuf) {
           let rowBytes = CVPixelBufferGetBytesPerRow(depthBuf)
           let ptr = base.advanced(
@@ -277,6 +279,26 @@ extension VideoCapture: AVCaptureDataOutputSynchronizerDelegate {
     )
   }
 
+}
+
+// MARK: - AVCapture Output Delegates
+extension VideoCapture {
+  // These delegate callbacks are required so that the outputs actually emit data. We simply
+  // forward the buffers to the synchronizer via no-op implementations because we already
+  // consume synchronized data in `dataOutputSynchronizer(_:didOutput:)`.
+  public func captureOutput(
+    _ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
+    from connection: AVCaptureConnection
+  ) {
+    // Intentionally left blank
+  }
+
+  public func captureOutput(
+    _ output: AVCaptureOutput, didOutput depthData: AVDepthData, timestamp: CMTime,
+    connection: AVCaptureConnection
+  ) {
+    // Intentionally left blank
+  }
 }
 
 // https://medium.com/@hunter-pearson/using-avfoundations-rotationcoordinator-to-rotate-media-views-0171c336d7f1

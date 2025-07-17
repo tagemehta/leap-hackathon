@@ -104,7 +104,7 @@ struct CameraPreviewView: UIViewControllerRepresentable {
 
     init(delegate: FrameProviderDelegate?, source: CaptureSourceType) {
       self.delegate = delegate
-      self.videoCapture = source == .arkit ? ARVideoCapture() : VideoCapture()
+      self.videoCapture = source == .arKit ? ARVideoCapture() : VideoCapture()
       self.videoCapture.delegate = delegate
     }
     

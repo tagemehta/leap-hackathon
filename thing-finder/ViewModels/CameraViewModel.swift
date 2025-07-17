@@ -55,7 +55,7 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
   private var settings: Settings { dependencies.settings }
 
   /// Navigation manager for handling navigation events
-  private var navigationManager: NavigationManager { dependencies.navigationManager }
+  private var navigationManager: NavigationManagerProtocol { dependencies.navigationManager }
 
   /// Detection manager for object detection
   private var detectionManager: DetectionManager { dependencies.detectionManager }
@@ -179,7 +179,9 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
       orientation: orientation,
       imageSize: bufferSize,
       viewBounds: previewViewBounds,
-      targetClasses: targetClasses
+      targetClasses: targetClasses,
+      depthAt: depthAt,
+      captureType: capture.sourceType
     )
 
     return  // Skip legacy path below

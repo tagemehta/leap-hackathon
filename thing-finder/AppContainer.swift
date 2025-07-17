@@ -41,14 +41,17 @@ public final class AppContainer {
     )
 
     // 5. Navigation manager
-    let nav = DefaultNavigationManager()
+    let nav = NavigationManager()
 
+    // 6. Lifecycle manager
+    let lifecycle = CandidateLifecycleService(imgUtils: ImageUtilities.shared)
     return FramePipelineCoordinator(
       detector: detector,
       tracker: tracker,
       driftRepair: drift,
       verifier: verifier,
-      nav: nav
+      nav: nav,
+      lifecycle: lifecycle
     )
   }
 }

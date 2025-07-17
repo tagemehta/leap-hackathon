@@ -1,9 +1,14 @@
-//
-//  ImageUtilities.swift
-//  thing-finder
-//
-//  Created by Tage Mehta on 6/10/25.
-//
+/// ImageUtilities
+/// ----------------
+/// A convenience collection of Vision/graphics helpers used across the pipeline.
+///
+/// Responsibilities:
+/// * Convert between Vision’s **upright, normalised** rectangles and buffer-space
+///   coordinates for arbitrary `CGImagePropertyOrientation`s.
+/// * Generate unscaled pixel + view bounding boxes for consistent cropping.
+/// * Provide a shared singleton (`ImageUtilities.shared`) to avoid scattering
+///   CIContext and math logic.
+///
 
 import CoreMedia
 import SwiftUI
@@ -152,6 +157,28 @@ public final class ImageUtilities {
     return self.inverseRotation(r, for: ori)
   }
 
+  /// Converts a Vision **normalised, upright** bounding box into both buffer-pixel
+  /// coordinates and view-space coordinates **without** introducing additional
+  /// scaling distortion.
+  ///
+  /// Vision gives bounding boxes in an upright, unit-square coordinate system
+  /// (origin is top-left, values 0–1).  In a typical camera preview you have:
+  /// 1. A pixel buffer that may be rotated relative to upright.
+  /// 2. A `UIView` (or CALayer) that displays the buffer with `AVLayerVideoGravity.resizeAspectFill`,
+  ///    meaning portions of the buffer are cropped.
+  ///
+  /// This helper maps the rectangle through both coordinate spaces in one shot:
+  /// * **imageRect** – pixel coordinates in *buffer orientation* (useful for cropping/embedding).
+  /// * **viewRect**  – points in preview-layer space so overlays line up with the UI.
+  ///
+  /// - Parameters:
+  ///   - normalizedRect: Bounding box from Vision (0–1, upright).
+  ///   - imageSize: The buffer’s pixel dimensions (width × height).
+  ///   - viewSize: Size of the preview view/layer after aspect-fill warping.
+  ///   - orientation: Orientation the buffer must be rotated **to become upright** (same as provided to Vision).
+  /// - Returns: A tuple `(imageRect, viewRect)` where:
+  ///   - `imageRect` is in buffer pixel coordinates.
+  ///   - `viewRect` is in preview-layer coordinates ready for CoreGraphics/SwiftUI drawing.
   func unscaledBoundingBoxes(
     for normalizedRect: CGRect,
     imageSize: CGSize,  // e.g. (width: CVPixelBufferGetWidth, height: CVPixelBufferGetHeight)

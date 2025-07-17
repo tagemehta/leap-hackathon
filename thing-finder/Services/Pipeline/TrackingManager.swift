@@ -1,3 +1,19 @@
+/// TrackingManager
+/// --------------
+/// Implements the `VisionTracker` protocol using `VNTrackObjectRequest`s.
+///
+/// Duties per frame (invoked by `FramePipelineCoordinator` via services):
+/// * Execute all active `VNTrackObjectRequest`s on the latest `CVPixelBuffer`.
+/// * Cull finished requests (`isLastFrame`).
+///
+/// Other API:
+/// * `addTracking(_:)` – enqueue a new vision tracking request for a detection.
+/// * `clearTracking()` – stop and remove all active requests.
+///
+/// Notes:
+/// The tracker itself does no lifecycle policies; `CandidateLifecycleService`
+/// owns when to drop a candidate. This class purely forwards Vision results.
+///
 import CoreImage
 import Foundation
 import Vision

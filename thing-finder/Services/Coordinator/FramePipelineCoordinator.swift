@@ -31,10 +31,10 @@ public final class FramePipelineCoordinator: ObservableObject {
   private let tracker: VisionTracker
   private let driftRepair: DriftRepairServiceProtocol
   private let verifier: VerifierServiceProtocol
-  private let nav: NavigationManager
+  private let nav: NavigationManagerProtocol
   private let store: CandidateStore
   private let stateMachine: DetectionStateMachine = DetectionStateMachine()
-
+  private let lifecycle: CandidateLifecycleService
   // MARK: Publishers
   @Published public private(set) var presentation: FramePresentation?
 
@@ -44,8 +44,9 @@ public final class FramePipelineCoordinator: ObservableObject {
     tracker: VisionTracker,
     driftRepair: DriftRepairServiceProtocol,
     verifier: VerifierServiceProtocol,
-    nav: NavigationManager,
-    store: CandidateStore = CandidateStore()
+    nav: NavigationManagerProtocol,
+    store: CandidateStore = CandidateStore(),
+    lifecycle: CandidateLifecycleService
   ) {
     self.detector = detector
     self.tracker = tracker
@@ -53,6 +54,7 @@ public final class FramePipelineCoordinator: ObservableObject {
     self.verifier = verifier
     self.nav = nav
     self.store = store
+    self.lifecycle = lifecycle
   }
 
   // MARK: Per-frame entry point
@@ -61,12 +63,16 @@ public final class FramePipelineCoordinator: ObservableObject {
     orientation: CGImagePropertyOrientation,
     imageSize: CGSize,
     viewBounds: CGRect,
-    targetClasses: [String]
+    targetClasses: [String],
+    depthAt: @escaping (CGPoint) -> Float?,
+    captureType: CaptureSourceType
   ) {
     // 1. Detection (filter always true for now)
-    let detections = detector.detect(pixelBuffer, filter: { obs in
-      targetClasses.contains(obs.labels.first?.identifier ?? "")
-    }, orientation: orientation)
+    let detections = detector.detect(
+      pixelBuffer,
+      filter: { obs in
+        targetClasses.contains(obs.labels.first?.identifier ?? "")
+      }, orientation: orientation)
 
     // 2. Vision tracking updates existing candidates
     tracker.tick(pixelBuffer: pixelBuffer, orientation: orientation, store: store)
@@ -80,34 +86,9 @@ public final class FramePipelineCoordinator: ObservableObject {
       detections: detections,
       store: store
     )
-
-    // 4. Upsert fresh detections that are not overlapping existing candidates
-    var cgImage: CGImage?
-    for det in detections {
-      // Check for duplicates using both IoU and center distance checks
-      if !store.containsDuplicateOf(det.boundingBox) {
-        let req = VNTrackObjectRequest(detectedObjectObservation: det)
-        req.trackingLevel = .accurate
-        // Compute initial embedding for robustness in drift-repair & verifier
-        if cgImage == nil {
-          cgImage = ImageUtilities.shared.cvPixelBuffertoCGImage(buffer: pixelBuffer)
-        }
-        let emb = EmbeddingComputer.compute(
-          cgImage: cgImage!,
-          boundingBox: det.boundingBox,
-          orientation: orientation,
-          imgUtils: ImageUtilities.shared,
-          imageSize: imageSize
-        )
-        let cand = Candidate(
-          trackingRequest: req,
-          boundingBox: det.boundingBox,
-          embedding: emb
-        )
-        store.upsert(cand)
-      }
-    }
-
+    let isLost = lifecycle.tick(
+      pixelBuffer: pixelBuffer, orientation: orientation, imageSize: imageSize,
+      detections: detections, store: store)
     // 5. Verifier tick (sets matchStatus)
     verifier.tick(
       pixelBuffer: pixelBuffer,
@@ -117,33 +98,8 @@ public final class FramePipelineCoordinator: ObservableObject {
       store: store
     )
 
-    // 5b. Ensure only ONE matched candidate remains (latest wins)
-    let matched = store.candidates.values.filter { $0.isMatched }
-    if let winner = matched.max(by: { $0.lastUpdated < $1.lastUpdated }) {
-      for (id, _) in store.candidates where id != winner.id {
-        store.remove(id: id)
-      }
-    }
-
-    // 5c. Out-of-frame / drift handling – drop candidates that no longer overlap any detection
-    let missThreshold = 5 // frames
-    for (id, cand) in store.candidates {
-      // ignore if candidate was just inserted this frame (has embedding maybe recent?)
-      let overlapsDet = detections.contains { det in
-        det.boundingBox.iou(with: cand.lastBoundingBox) > 0.1
-      }
-      if overlapsDet {
-        store.update(id: id) { $0.missCount = 0 }
-      } else {
-        store.update(id: id) { $0.missCount += 1 }
-        if let updated = store[id], updated.missCount >= missThreshold {
-          store.remove(id: id)
-        }
-      }
-    }
-
     // If all candidates were removed, notify lost and reset any tracking
-    if store.candidates.isEmpty {
+    if isLost {
       nav.handle(NavEvent.lost, box: nil, distanceMeters: nil)
     }
 
@@ -155,13 +111,23 @@ public final class FramePipelineCoordinator: ObservableObject {
     // 7. Navigation cues (very naïve initial logic)
     switch phase {
     case .found(let id):
-      let cand = store.candidates[id]
-      nav.handle(.found, box: cand?.lastBoundingBox, distanceMeters: nil)
+      let cand = store.candidates[id]!
+      let (imageRect, viewRect) = ImageUtilities.shared.unscaledBoundingBoxes(for: cand.lastBoundingBox, imageSize: imageSize, viewSize: viewBounds.size, orientation: orientation)
+      let depth: Float?
+      switch captureType {
+      case .avFoundation:
+        let normalizedBox = VNNormalizedRectForImageRect(
+          imageRect, Int(imageSize.width), Int(imageSize.height))
+        depth = depthAt(CGPoint(x: normalizedBox.midX, y: normalizedBox.midY))
+      case .arKit:
+        depth = depthAt(CGPoint(x: viewRect.midX, y: imageRect.midY))
+      }
+      nav.handle(.found, box: cand.lastBoundingBox, distanceMeters: (depth != nil) ? Double(depth!) : nil)
     case .searching:
-      nav.handle(.lost, box: nil, distanceMeters: nil)
+      nav.handle(.searching, box: nil, distanceMeters: nil)
     case .verifying:
       break
-//      nav.handle(.noMatch, box: nil, distanceMeters: nil)
+    //      nav.handle(.noMatch, box: nil, distanceMeters: nil)
     }
 
     // 8. Publish for UI
