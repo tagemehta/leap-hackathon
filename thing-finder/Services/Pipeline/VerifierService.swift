@@ -43,6 +43,10 @@ final class VerifierService: VerifierServiceProtocol {
   private let apiClient: LLMVerifier
   private let imgUtils: ImageUtilities
   private var cancellables: Set<AnyCancellable> = []
+  /// Timestamp of the most recent *batch* of verify() requests (i.e., the last tick that sent one or more verify calls).
+  private var lastVerifyBatch: Date = .distantPast
+  /// Minimum interval between successive batches of verify() requests.
+  private let minVerifyInterval: TimeInterval = 1.0  // seconds
 
   init(apiClient: LLMVerifier, imgUtils: ImageUtilities) {
     self.apiClient = apiClient
@@ -57,18 +61,30 @@ final class VerifierService: VerifierServiceProtocol {
     viewBounds: CGRect,
     store: CandidateStore
   ) {
-    let pending = store.candidates.values.filter { $0.matchStatus == .unknown }
-    guard !pending.isEmpty else { return }
+    let pendingUnknown = store.candidates.values.filter { $0.matchStatus == .unknown }
+    guard !pendingUnknown.isEmpty else { return }
 
-    lazy var fullImage: CGImage? = {
-      return imgUtils.cvPixelBuffertoCGImage(buffer: pixelBuffer)
-    }()
-
-    for cand in pending {
-      if apiClient.targetTextDescription.isEmpty {
+    // Split candidates into ones we can auto-match (no text description) and ones needing verification.
+    var toVerify: [Candidate] = []
+    if apiClient.targetTextDescription.isEmpty {
+      for cand in pendingUnknown {
         store.update(id: cand.id) { $0.matchStatus = .matched }
-        continue
       }
+    } else {
+      toVerify = pendingUnknown
+    }
+    guard !toVerify.isEmpty else { return }
+
+    let now = Date()
+    // Rate-limit: if the previous batch was too recent, skip this tick entirely.
+    guard now.timeIntervalSince(lastVerifyBatch) >= minVerifyInterval else {
+      return
+    }
+
+    let fullImage: CGImage = imgUtils.cvPixelBuffertoCGImage(buffer: pixelBuffer)
+
+    lastVerifyBatch = now
+    for cand in toVerify {
 
       // Convert normalized box → pixel rect using ImageUtilities
       let (imageRect, _) = imgUtils.unscaledBoundingBoxes(
@@ -77,7 +93,7 @@ final class VerifierService: VerifierServiceProtocol {
         viewSize: imageSize,  // view size irrelevant here
         orientation: orientation
       )
-      guard let crop = fullImage?.cropping(to: imageRect) else { continue }
+      guard let crop = fullImage.cropping(to: imageRect) else { continue }
 
       guard let jpg = UIImage(cgImage: crop).jpegData(compressionQuality: 1) else { continue }
 

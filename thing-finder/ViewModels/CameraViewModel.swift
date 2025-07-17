@@ -62,16 +62,16 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
 
   /// Image utilities for image processing
   private var imgUtils: ImageUtilities { dependencies.imageUtils }
-
+  
+  private var fpsManager: FPSCalculator {dependencies.fpsManager}
   // MARK: - Initialization
 
   /// Initializes the CameraViewModel with required parameters
   /// - Parameter dependencies: Container for all required dependencies
   init(dependencies: CameraDependencies) {
-    self.dependencies = dependencies
-
     // Build new pipeline coordinator
     self.pipeline = AppContainer.shared.makePipeline(classes: dependencies.targetClasses, description: dependencies.targetTextDescription)
+    self.dependencies = dependencies
     super.init()
 
     // Set up publishers
@@ -120,6 +120,9 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
 
   /// Sets up publishers for FPS and detection state
   private func setupPublishers() {
+    self.fpsManager.fpsPublisher
+      .receive(on: DispatchQueue.main)
+      .assign(to: &$currentFPS)
 
   }
 
@@ -170,6 +173,7 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
     guard let bufferSize = cachedBufferDims, let previewViewBounds = cachedPreviewViewBounds else {
       return
     }
+    fpsManager.updateFPSCalculation()
     let orientation = ImageUtilities.shared.cgOrientation(
       for: UIInterfaceOrientation(UIDevice.current.orientation))
 
@@ -179,7 +183,6 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
       orientation: orientation,
       imageSize: bufferSize,
       viewBounds: previewViewBounds,
-      targetClasses: targetClasses,
       depthAt: depthAt,
       captureType: capture.sourceType
     )

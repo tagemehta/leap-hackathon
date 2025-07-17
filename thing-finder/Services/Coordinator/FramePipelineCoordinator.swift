@@ -35,6 +35,9 @@ public final class FramePipelineCoordinator: ObservableObject {
   private let store: CandidateStore
   private let stateMachine: DetectionStateMachine = DetectionStateMachine()
   private let lifecycle: CandidateLifecycleService
+  
+  private let targetClasses: [String]
+  private let targetDescription: String
   // MARK: Publishers
   @Published public private(set) var presentation: FramePresentation?
 
@@ -46,7 +49,9 @@ public final class FramePipelineCoordinator: ObservableObject {
     verifier: VerifierServiceProtocol,
     nav: NavigationManagerProtocol,
     store: CandidateStore = CandidateStore(),
-    lifecycle: CandidateLifecycleService
+    lifecycle: CandidateLifecycleService,
+    targetClasses: [String],
+    targetDescription: String
   ) {
     self.detector = detector
     self.tracker = tracker
@@ -55,6 +60,9 @@ public final class FramePipelineCoordinator: ObservableObject {
     self.nav = nav
     self.store = store
     self.lifecycle = lifecycle
+    self.targetClasses = targetClasses
+    self.targetDescription = targetDescription
+    nav.handle(.start(targetClasses: targetClasses, targetTextDescription: targetDescription), box: nil, distanceMeters: nil)
   }
 
   // MARK: Per-frame entry point
@@ -63,7 +71,6 @@ public final class FramePipelineCoordinator: ObservableObject {
     orientation: CGImagePropertyOrientation,
     imageSize: CGSize,
     viewBounds: CGRect,
-    targetClasses: [String],
     depthAt: @escaping (CGPoint) -> Float?,
     captureType: CaptureSourceType
   ) {
@@ -100,6 +107,7 @@ public final class FramePipelineCoordinator: ObservableObject {
 
     // If all candidates were removed, notify lost and reset any tracking
     if isLost {
+      print(isLost)
       nav.handle(NavEvent.lost, box: nil, distanceMeters: nil)
     }
 

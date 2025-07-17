@@ -77,7 +77,13 @@ class VideoCapture: NSObject, FrameProvider {
 
   deinit {
     NotificationCenter.default.removeObserver(self)
-    UIDevice.current.endGeneratingDeviceOrientationNotifications()
+    if Thread.isMainThread {
+      UIDevice.current.endGeneratingDeviceOrientationNotifications()
+    } else {
+      DispatchQueue.main.async {
+        UIDevice.current.endGeneratingDeviceOrientationNotifications()
+      }
+    }
   }
 
   // MARK: - Rotation Handling
@@ -176,14 +182,17 @@ class VideoCapture: NSObject, FrameProvider {
     if !captureDevice.formats.filter({ format in
       !format.supportedDepthDataFormats.isEmpty
     }).isEmpty {
-      captureSession.canAddOutput(depthOutput)
-      depthOutput.isFilteringEnabled = true
-      depthOutput.alwaysDiscardsLateDepthData = true
-      captureSession.addOutput(depthOutput)
-      if depthOutput.connection(with: .depthData) != nil {
-        outputs.append(depthOutput)
+      if captureSession.canAddOutput(depthOutput) {
+        depthOutput.isFilteringEnabled = true
+        depthOutput.alwaysDiscardsLateDepthData = true
+        captureSession.addOutput(depthOutput)
+        if depthOutput.connection(with: .depthData) != nil {
+          outputs.append(depthOutput)
+        } else {
+          print("Warning: Depth output added but no valid connection")
+        }
       } else {
-        print("Warning: Depth output added but no valid connection")
+        print("Warning: cannot add depth output")
       }
     }
 
@@ -324,7 +333,7 @@ class AVPreviewView: UIView {
   }
 
   deinit {
-    UIDevice.current.endGeneratingDeviceOrientationNotifications()
+    // No-op; balanced in VideoCapture
   }
 
   /// Call after the associated AVCaptureSession is fully configured.

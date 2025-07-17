@@ -51,7 +51,9 @@ public final class AppContainer {
       driftRepair: drift,
       verifier: verifier,
       nav: nav,
-      lifecycle: lifecycle
+      lifecycle: lifecycle,
+      targetClasses: classes,
+      targetDescription: description
     )
   }
 }

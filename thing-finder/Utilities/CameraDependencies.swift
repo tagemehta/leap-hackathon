@@ -16,6 +16,7 @@ struct CameraDependencies {
     let detectionManager: DetectionManager
     let navigationManager: NavigationManagerProtocol
     let imageUtils: ImageUtilities
+    let fpsManager: FPSCalculator
 }
 
 // MARK: - Factory
@@ -39,7 +40,8 @@ extension CameraDependencies {
             settings: settings,
             detectionManager: detectionManager,
             navigationManager: NavigationManager(settings: settings),
-            imageUtils: ImageUtilities()
+            imageUtils: ImageUtilities(),
+            fpsManager: FPSManager()
         )
     }
 }

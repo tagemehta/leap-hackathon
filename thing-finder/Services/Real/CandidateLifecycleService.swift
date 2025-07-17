@@ -97,7 +97,7 @@ public final class CandidateLifecycleService: CandidateLifecycleServiceProtocol 
 
     // 2. Enforce only one matched candidate
     store.pruneToSingleMatched()
-
+    var isLost = false
     // 3. Update missCount + drop stale
     for (id, cand) in store.candidates {
       let overlaps = detections.contains { det in
@@ -108,11 +108,14 @@ public final class CandidateLifecycleService: CandidateLifecycleServiceProtocol 
       } else {
         store.update(id: id) { $0.missCount += 1 }
         if let updated = store[id], updated.missCount >= missThreshold {
+          if updated.isMatched {
+            isLost = true
+          }
           store.remove(id: id)
         }
       }
     }
 
-    return store.candidates.isEmpty
+    return isLost
   }
 }
