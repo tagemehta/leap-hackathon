@@ -104,6 +104,9 @@ class Settings: ObservableObject {
   /// Enable speech feedback
   @AppStorage("enable_speech") var enableSpeech: Bool = true
 
+  /// Allow navigation cues before plate confirm (partial match)
+  @AppStorage("allow_partial_nav") var allowPartialNavigation: Bool = true
+
   /// Speech rate (-1.0 to 1.0, where 0 is normal)
   @AppStorage("speech_rate") var speechRate: Double = 0.5
 

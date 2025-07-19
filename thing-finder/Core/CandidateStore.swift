@@ -115,6 +115,6 @@ public final class CandidateStore: ObservableObject {
 
 extension CandidateStore {
   var hasActiveMatch: Bool {
-    candidates.values.contains { $0.matchStatus == .matched }
+    candidates.values.contains { $0.matchStatus == .full }
   }
 }

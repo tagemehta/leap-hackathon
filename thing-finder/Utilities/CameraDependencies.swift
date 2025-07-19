@@ -14,7 +14,6 @@ struct CameraDependencies {
     let targetTextDescription: String
     let settings: Settings
     let detectionManager: DetectionManager
-    let navigationManager: NavigationManagerProtocol
     let imageUtils: ImageUtilities
     let fpsManager: FPSCalculator
 }
@@ -39,7 +38,6 @@ extension CameraDependencies {
             targetTextDescription: targetTextDescription,
             settings: settings,
             detectionManager: detectionManager,
-            navigationManager: NavigationManager(settings: settings),
             imageUtils: ImageUtilities(),
             fpsManager: FPSManager()
         )

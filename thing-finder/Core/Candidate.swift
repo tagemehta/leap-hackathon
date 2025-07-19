@@ -35,11 +35,19 @@ public struct Candidate: Identifiable, Equatable {
   /// same crop sent to the verifier.  Length is typically 128 floats.
   public var embedding: VNFeaturePrintObservation?
 
-  /// The verifier’s judgement on this candidate.
+  /// Verification progress for this candidate.
   public var matchStatus: MatchStatus = .unknown
+  /// Human-readable description returned by LLM, e.g. “blue Toyota Camry”.
+  public var detectedDescription: String?
+  /// Reason for rejection when matchStatus == .rejected.
+  public var rejectReason: String?
+  /// Number of OCR attempts executed so far (licence-plate verification).
+  public var ocrAttempts: Int = 0
+  /// Last recognised text (if any) for debugging / speech.
+  public var ocrText: String?
   
-  /// Convenience – true when verifier has approved this candidate.
-  public var isMatched: Bool { matchStatus == .matched }
+  /// Convenience – true when verifier has fully approved this candidate.
+  public var isMatched: Bool { matchStatus == .full }
 
   // MARK: Lifetime bookkeeping
   public var createdAt: Date = Date()
@@ -66,8 +74,9 @@ public struct Candidate: Identifiable, Equatable {
 
 /// LLM verification result for a candidate.
 public enum MatchStatus: String, Codable {
-  case unknown  // detector output, not yet verified
-  case waiting  // verification request inflight
-  case matched  // verifier said yes
-  case rejected  // verifier said no
+  case unknown   // detector output, API not called yet
+  case waiting   // API verification in-flight
+  case partial   // API matched, plate not confirmed
+  case full      // API + plate confirmed
+  case rejected  // negative result (wrong plate / retry exhausted)
 }

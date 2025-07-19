@@ -45,21 +45,6 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
   /// Confidence filter threshold
   private let CONFIDENCE_FILTER: Float = 0.4
 
-  /// Target classes to detect
-  private var targetClasses: [String] { dependencies.targetClasses }
-
-  /// Text description of the target
-  private var targetTextDescription: String { dependencies.targetTextDescription }
-
-  /// Settings for configurable parameters
-  private var settings: Settings { dependencies.settings }
-
-  /// Navigation manager for handling navigation events
-  private var navigationManager: NavigationManagerProtocol { dependencies.navigationManager }
-
-  /// Detection manager for object detection
-  private var detectionManager: DetectionManager { dependencies.detectionManager }
-
   /// Image utilities for image processing
   private var imgUtils: ImageUtilities { dependencies.imageUtils }
   
@@ -98,7 +83,8 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
           switch cand.matchStatus {
           case .unknown: color = .yellow
           case .waiting: color = .blue
-          case .matched: color = .green
+          case .full: color = .green
+          case .partial: color = .orange
           case .rejected: color = .red
           }
           return BoundingBox(imageRect: imageRect, viewRect: viewRect, label: "", color: color!)

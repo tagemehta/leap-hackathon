@@ -27,7 +27,7 @@ public struct DetectionStateMachine {
     }
 
     // Look for first matched candidate (verifier approved)
-    if let match = snapshot.first(where: { $0.matchStatus == .matched }) {
+    if let match = snapshot.first(where: { $0.matchStatus == .full }) {
       phase = .found(candidateID: match.id)
       return
     }

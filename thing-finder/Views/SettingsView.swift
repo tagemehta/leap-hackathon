@@ -10,6 +10,7 @@ struct SettingsView: View {
       List {
         // MARK: - Navigation Feedback
         Section(header: Text("Navigation Feedback")) {
+          Toggle("Navigate on Partial", isOn: $settings.allowPartialNavigation)
 //          Toggle("Audio Beeps", isOn: $settings.enableAudio)
 //          Toggle("Speech Guidance", isOn: $settings.enableSpeech)
 //          Toggle("Haptic Feedback", isOn: $settings.enableHaptics)

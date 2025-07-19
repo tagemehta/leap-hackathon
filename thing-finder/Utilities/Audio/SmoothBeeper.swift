@@ -8,7 +8,7 @@ import SwiftUI
 /// • Safe from bugs   – one timer, no busy-loop, race-free reschedule logic.
 /// • Easy to understand – play → schedule next, only five core vars.
 /// • Ready for change   – all timing contained in `scheduleNextBeep()`.
-final class SmoothBeeper {
+final class SmoothBeeper: Beeper {
   // Settings for configurable parameters
   private let settings: Settings
   // MARK: – Public configuration
@@ -57,6 +57,14 @@ final class SmoothBeeper {
     //    #endif
   }
 
+  // MARK: – Beeper protocol
+  func start(frequency: Double, volume: Float) {
+    // Frequency is mapped to interval: higher frequency beeps faster.
+    let interval = max(minInterval, 1.0 / frequency)
+    updateVolume(to: Double(volume))
+    start(interval: interval)
+  }
+  
   // MARK: – Public API
   /// Dynamically adjust the output volume (0.0 – 1.0).
   func updateVolume(to newVolume: Double) {

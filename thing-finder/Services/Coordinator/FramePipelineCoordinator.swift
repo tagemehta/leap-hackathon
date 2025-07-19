@@ -31,11 +31,11 @@ public final class FramePipelineCoordinator: ObservableObject {
   private let tracker: VisionTracker
   private let driftRepair: DriftRepairServiceProtocol
   private let verifier: VerifierServiceProtocol
-  private let nav: NavigationManagerProtocol
+  private let nav: NavigationSpeaker
   private let store: CandidateStore
   private let stateMachine: DetectionStateMachine = DetectionStateMachine()
   private let lifecycle: CandidateLifecycleService
-  
+
   private let targetClasses: [String]
   private let targetDescription: String
   // MARK: Publishers
@@ -47,7 +47,7 @@ public final class FramePipelineCoordinator: ObservableObject {
     tracker: VisionTracker,
     driftRepair: DriftRepairServiceProtocol,
     verifier: VerifierServiceProtocol,
-    nav: NavigationManagerProtocol,
+    nav: NavigationSpeaker,
     store: CandidateStore = CandidateStore(),
     lifecycle: CandidateLifecycleService,
     targetClasses: [String],
@@ -62,7 +62,7 @@ public final class FramePipelineCoordinator: ObservableObject {
     self.lifecycle = lifecycle
     self.targetClasses = targetClasses
     self.targetDescription = targetDescription
-    nav.handle(.start(targetClasses: targetClasses, targetTextDescription: targetDescription), box: nil, distanceMeters: nil)
+
   }
 
   // MARK: Per-frame entry point
@@ -105,10 +105,9 @@ public final class FramePipelineCoordinator: ObservableObject {
       store: store
     )
 
-    // If all candidates were removed, notify lost and reset any tracking
+    // If all candidates were removed, you may reset trackers if desired.
     if isLost {
-      print(isLost)
-      nav.handle(NavEvent.lost, box: nil, distanceMeters: nil)
+      print("All candidates lost – resetting trackers")
     }
 
     // 6. Update global phase
@@ -116,27 +115,46 @@ public final class FramePipelineCoordinator: ObservableObject {
     machine.update(snapshot: Array(store.candidates.values))
     let phase = machine.phase
 
-    // 7. Navigation cues (very naïve initial logic)
+    // 7.5 Determine target bounding box & approximate distance for navigation cues
+    var targetBBox: CGRect?
     switch phase {
     case .found(let id):
-      let cand = store.candidates[id]!
-      let (imageRect, viewRect) = ImageUtilities.shared.unscaledBoundingBoxes(for: cand.lastBoundingBox, imageSize: imageSize, viewSize: viewBounds.size, orientation: orientation)
-      let depth: Float?
+      targetBBox = store[id]?.lastBoundingBox
+    case .verifying(let ids):
+      // Prefer a partial match if any of the verifying IDs are currently partial
+      if let partial = store.candidates.values.first(where: {
+        ids.contains($0.id) && $0.matchStatus == .partial
+      }) {
+        targetBBox = partial.lastBoundingBox
+      }
+    default:
+      break
+    }
+
+    var targetDistance: Double?
+    if let box = targetBBox {
+      // Sample depth at the box centre using the supplied depthAt closure.
+      let center: CGPoint
       switch captureType {
       case .avFoundation:
-        let normalizedBox = VNNormalizedRectForImageRect(
-          imageRect, Int(imageSize.width), Int(imageSize.height))
-        depth = depthAt(CGPoint(x: normalizedBox.midX, y: normalizedBox.midY))
+        // Convert view-rect back to normalized image rect for AVF buffers
+        let normalized = VNNormalizedRectForImageRect(
+          box, Int(imageSize.width), Int(imageSize.height))
+        center = CGPoint(x: normalized.midX, y: normalized.midY)
       case .arKit:
-        depth = depthAt(CGPoint(x: viewRect.midX, y: imageRect.midY))
+        center = CGPoint(x: box.midX, y: box.midY)
       }
-      nav.handle(.found, box: cand.lastBoundingBox, distanceMeters: (depth != nil) ? Double(depth!) : nil)
-    case .searching:
-      nav.handle(.searching, box: nil, distanceMeters: nil)
-    case .verifying:
-      break
-    //      nav.handle(.noMatch, box: nil, distanceMeters: nil)
+      if let d = depthAt(center) {
+        targetDistance = Double(d)
+      }
     }
+
+    // 7.5 Navigation tick
+    nav.tick(
+      at: Date(),
+      candidates: Array(store.candidates.values),
+      targetBox: targetBBox,
+      distance: targetDistance)
 
     // 8. Publish for UI
     presentation = FramePresentation(

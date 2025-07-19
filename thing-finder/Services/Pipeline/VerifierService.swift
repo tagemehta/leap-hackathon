@@ -38,19 +38,20 @@ import Foundation
 import UIKit
 import Vision
 
-/// Concrete implementation of `VerifierService`.
 final class VerifierService: VerifierServiceProtocol {
   private let apiClient: LLMVerifier
-  private let imgUtils: ImageUtilities
+  internal let imgUtils: ImageUtilities
+  internal let verificationConfig: VerificationConfig
   private var cancellables: Set<AnyCancellable> = []
   /// Timestamp of the most recent *batch* of verify() requests (i.e., the last tick that sent one or more verify calls).
   private var lastVerifyBatch: Date = .distantPast
   /// Minimum interval between successive batches of verify() requests.
   private let minVerifyInterval: TimeInterval = 1.0  // seconds
 
-  init(apiClient: LLMVerifier, imgUtils: ImageUtilities) {
+  init(apiClient: LLMVerifier, imgUtils: ImageUtilities, config: VerificationConfig) {
     self.apiClient = apiClient
     self.imgUtils = imgUtils
+    self.verificationConfig = config
   }
 
   /// Called every frame by `FramePipelineCoordinator`.
@@ -68,20 +69,37 @@ final class VerifierService: VerifierServiceProtocol {
     var toVerify: [Candidate] = []
     if apiClient.targetTextDescription.isEmpty {
       for cand in pendingUnknown {
-        store.update(id: cand.id) { $0.matchStatus = .matched }
+        store.update(id: cand.id) { $0.matchStatus = .full }
       }
     } else {
       toVerify = pendingUnknown
     }
-    guard !toVerify.isEmpty else { return }
+    guard
+      !toVerify.isEmpty || !store.candidates.values.filter({ $0.matchStatus == .partial }).isEmpty
+    else { return }
 
     let now = Date()
+    // --------- OCR retry pass (only when OCR enabled)
+    var fullImage: CGImage?
+    if self.verificationConfig.shouldRunOCR {
+      let partials = store.candidates.values.filter {
+        $0.matchStatus == .partial && $0.ocrAttempts < self.verificationConfig.maxOCRRetries
+      }
+      if !partials.isEmpty {
+        fullImage = imgUtils.cvPixelBuffertoCGImage(buffer: pixelBuffer)
+        for cand in partials {
+          self.enqueueOCR(
+            for: cand, fullImage: fullImage!, imageSize: imageSize, orientation: orientation,
+            store: store)
+        }
+      }
+    }
     // Rate-limit: if the previous batch was too recent, skip this tick entirely.
     guard now.timeIntervalSince(lastVerifyBatch) >= minVerifyInterval else {
       return
     }
 
-    let fullImage: CGImage = imgUtils.cvPixelBuffertoCGImage(buffer: pixelBuffer)
+    fullImage = fullImage ?? imgUtils.cvPixelBuffertoCGImage(buffer: pixelBuffer)
 
     lastVerifyBatch = now
     for cand in toVerify {
@@ -93,7 +111,7 @@ final class VerifierService: VerifierServiceProtocol {
         viewSize: imageSize,  // view size irrelevant here
         orientation: orientation
       )
-      guard let crop = fullImage.cropping(to: imageRect) else { continue }
+      guard let crop = fullImage!.cropping(to: imageRect) else { continue }
 
       guard let jpg = UIImage(cgImage: crop).jpegData(compressionQuality: 1) else { continue }
 
@@ -104,14 +122,38 @@ final class VerifierService: VerifierServiceProtocol {
           if case .failure(let err) = completion {
             print("LLM verify error: \(err)")
           }
-        } receiveValue: { matched in
-          if matched {
-            store.update(id: cand.id) { $0.matchStatus = .matched }
+        } receiveValue: { outcome in
+          if outcome.isMatch {
+            store.update(id: cand.id) {
+              $0.detectedDescription = outcome.description
+            }
+            if !self.verificationConfig.shouldRunOCR {
+              store.update(id: cand.id) { $0.matchStatus = .full }
+              return
+            }
+            // Promote to partial and begin OCR verification
+            store.update(id: cand.id) {
+              $0.matchStatus = .partial
+              $0.detectedDescription = outcome.description
+            }
+            self.enqueueOCR(
+              for: cand, fullImage: fullImage!, imageSize: imageSize, orientation: orientation,
+              store: store)
           } else {
-            store.remove(id: cand.id)
+            store.update(id: cand.id) {
+              if outcome.rejectReason == "unclear_image" {
+                // Image too blurry / unclear – keep searching so candidate will be retried
+                $0.matchStatus = .unknown
+              } else {
+                $0.matchStatus = .rejected
+              }
+              $0.rejectReason = outcome.rejectReason
+              $0.detectedDescription = outcome.description
+            }
           }
         }
         .store(in: &cancellables)
     }
+
   }
 }

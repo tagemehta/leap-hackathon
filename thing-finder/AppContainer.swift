@@ -35,13 +35,22 @@ public final class AppContainer {
     let drift = DriftRepairService(imageUtils: ImageUtilities.shared)
 
     // 4. Verifier – DefaultVerifierService wired with LLMVerifier
+    // Extract potential license plate and remaining description
+    let parsed = DescriptionParser.extractPlate(from: description)
+    let needsOCR =
+      classes.contains { ["car", "truck", "bus", "van"].contains($0.lowercased()) }
+      && parsed.plate != nil
+    let verifierConfig = VerificationConfig(expectedPlate: parsed.plate, shouldRunOCR: needsOCR)
     let verifier = VerifierService(
-      apiClient: LLMVerifier(targetClasses: classes, targetTextDescription: description),
-      imgUtils: ImageUtilities.shared
+      apiClient: LLMVerifier(targetClasses: classes, targetTextDescription: parsed.remainder),
+      imgUtils: ImageUtilities.shared,
+      config: verifierConfig
     )
 
-    // 5. Navigation manager
-    let nav = NavigationManager()
+    // 5. Navigation manager (frame-driven)
+    let nav = FrameNavigationManager(
+      settings: Settings(),
+      speaker: Speaker())
 
     // 6. Lifecycle manager
     let lifecycle = CandidateLifecycleService(imgUtils: ImageUtilities.shared)

@@ -1,9 +1,9 @@
 import AVFoundation
 
-class Speaker {
+class Speaker: SpeechOutput {
   private let synthesizer = AVSpeechSynthesizer()
 
-  public func speak(text: String, rate: Float = 0.5) {
+  public func speak(_ text: String, rate: Float = 0.5) {
     if synthesizer.isSpeaking {
       synthesizer.stopSpeaking(at: .immediate)  // Interrupt immediately
     }

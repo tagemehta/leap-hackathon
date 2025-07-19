@@ -10,6 +10,7 @@
 import CoreGraphics
 import CoreMedia
 import Foundation
+import CoreGraphics
 import Vision
 
 // MARK: - CaptureType
@@ -84,9 +85,7 @@ public enum NavEvent {
   case expired
 }
 
-
-
-
 public protocol NavigationManagerProtocol {
   func handle(_ event: NavEvent, box: CGRect?, distanceMeters: Double?)
+  func announce(candidate: Candidate)
 }

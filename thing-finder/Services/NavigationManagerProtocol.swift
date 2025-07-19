@@ -1,4 +1,4 @@
-/// NavigationManager
+/*/// NavigationManager
 /// -----------------------
 /// Provides user-facing navigation feedback (speech + haptics) based on
 /// `NavEvent`s emitted from `FramePipelineCoordinator`.
@@ -25,11 +25,19 @@ import Vision
 
 // NavEvent is defined centrally in PipelineProtocols.swift
 
-public class NavigationManager: NavigationManagerProtocol  {
+public class LegacyNavigationManager: NavigationManagerProtocol  {
   // Settings for configurable parameters
-  private let settings: Settings
+  let settings: Settings
   var lastDirection: Direction?
   var timeLastSpoken = Date()
+  /// Tracks last phrase spoken per candidate id to suppress repeats.
+  private var lastPhraseByCandidate: [CandidateID: (phrase: String, time: Date)] = [:]
+  /// Global last phrase to suppress identical phrases across candidates.
+  var lastGlobalPhrase: (phrase: String, time: Date)? = nil
+  /// Tracks last announced status per candidate
+  private var lastStatusByCandidate: [CandidateID: MatchStatus] = [:]
+  /// Indicates whether "waiting for verification" has been spoken globally since last progress.
+  private var hasSpokenWaiting = false
   let speaker = Speaker()
   private let beeper = SmoothBeeper()
   private var currentInterval: TimeInterval?
@@ -128,4 +136,45 @@ public class NavigationManager: NavigationManagerProtocol  {
       speaker.speak(text: newDirection.rawValue, rate: Float(settings.speechRate))
     }
   }
+  
+  public func announce(candidate: Candidate) {
+    // Build phrase first
+    guard let phrase = MatchStatusSpeech.phrase(
+      for: candidate.matchStatus,
+      recognisedText: candidate.ocrText,
+      detectedDescription: candidate.detectedDescription,
+      rejectReason: candidate.rejectReason) else { return }
+    let now = Date()
+    // Global waiting logic – say only once until progress.
+    switch candidate.matchStatus {
+    case .waiting:
+      if hasSpokenWaiting { return }
+      hasSpokenWaiting = true
+    case .partial, .full:
+      hasSpokenWaiting = false
+    default:
+      break
+    }
+
+    // Skip if status hasn't changed for this candidate
+    if lastStatusByCandidate[candidate.id] == candidate.matchStatus {
+      return
+    }
+    lastStatusByCandidate[candidate.id] = candidate.matchStatus
+
+    // Global suppression
+    if let g = lastGlobalPhrase, g.phrase == phrase,
+       now.timeIntervalSince(g.time) < settings.speechRepeatInterval {
+      return
+    }
+    if let last = lastPhraseByCandidate[candidate.id], last.phrase == phrase,
+       now.timeIntervalSince(last.time) < settings.speechRepeatInterval {
+      return // skip repeat within interval for same candidate
+    }
+    // speak and record
+    speaker.speak(text: phrase)
+    lastPhraseByCandidate[candidate.id] = (phrase, now)
+    lastGlobalPhrase = (phrase, now)
+  }
 }
+*/

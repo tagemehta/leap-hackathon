@@ -65,10 +65,14 @@ public final class CandidateLifecycleService: CandidateLifecycleServiceProtocol 
 
   private let imgUtils: ImageUtilities
   private let missThreshold: Int
+  private let rejectCooldown: TimeInterval
 
-  public init(imgUtils: ImageUtilities = .shared, missThreshold: Int = 5) {
+  public init(imgUtils: ImageUtilities = .shared,
+              missThreshold: Int = 5,
+              rejectCooldown: TimeInterval = 10) {
     self.imgUtils = imgUtils
     self.missThreshold = missThreshold
+    self.rejectCooldown = rejectCooldown
   }
 
   public func tick(
@@ -107,11 +111,19 @@ public final class CandidateLifecycleService: CandidateLifecycleServiceProtocol 
         store.update(id: id) { $0.missCount = 0 }
       } else {
         store.update(id: id) { $0.missCount += 1 }
-        if let updated = store[id], updated.missCount >= missThreshold {
-          if updated.isMatched {
-            isLost = true
+        if let updated = store[id] {
+          // Drop if missed too many frames
+          if updated.missCount >= missThreshold {
+            if updated.isMatched { isLost = true }
+            store.remove(id: id)
+            continue
           }
-          store.remove(id: id)
+          // Drop after reject cooldown elapsed
+          if updated.matchStatus == .rejected,
+             Date().timeIntervalSince(updated.lastUpdated) >= rejectCooldown {
+            store.remove(id: id)
+            continue
+          }
         }
       }
     }
