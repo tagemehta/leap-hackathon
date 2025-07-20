@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-final class LLMVerifier {
+public final class LLMVerifier: ImageVerifier {
   private var lastVerifiedDate = Date()
   private let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
   private let jsonEncoder = {
@@ -15,18 +15,12 @@ final class LLMVerifier {
   }()
   private let apiKey = Bundle.main.infoDictionary!["OPENAI_API"] as! String
 
-  let targetClasses: [String]
-  let targetTextDescription: String
-
+  public let targetClasses: [String]
+  public let targetTextDescription: String
+  private let confidenceThreshold: Double = 0.86
   init(targetClasses: [String], targetTextDescription: String) {
     self.targetClasses = targetClasses
     self.targetTextDescription = targetTextDescription
-  }
-
-  public struct VerificationOutcome {
-    public let isMatch: Bool
-    public let description: String
-    public let rejectReason: String?
   }
 
   public func verify(imageData: String) -> AnyPublisher<VerificationOutcome, Error> {
@@ -49,30 +43,6 @@ final class LLMVerifier {
                 Respond strictly in JSON format as per the provided schema.
                 You are doing this for a blind audience in an app that helps them navigate to objects.
                 Accuracy is mission critical.
-
-                Example: Does this image, focusing on a car, match the following description? Silver honda crv with license plate 123456789.
-
-                IMPORTANT: IF THE PLATE IS NOT VISIBLE, BUT THE REST OF THE DESCRIPTION IS CORRECT, RETURN {"match": true, "confidence": (you determine)}
-
-                if the image matches the description, return {"match": true, "confidence": (you determine)}
-                if the image contains a different model or color of car, return {"match": false, "confidence": (you determine)}
-                if the license plate does not match, return {"match": false, "confidence": (you determine)}
-
-                if the license plate is visible but wrong, return {"match": false, "confidence": (you determine)}
-                For cars, we run a secondary license plate verification step.
-
-                Example: Does this image of a black jeep wrangler match the following description? A black jeep wrangler
-                if the image matches the description, return {"match": true, "confidence": (you determine)}
-                if the image contains a different model or color of jeep, return {"match": false, "confidence": (you determine)}
-
-                Example: Does this image focusing on a bottle, match the following description? White and red tylenol bottle
-                if the image matches the description, return {"match": true, "confidence": (you determine)}
-                if the image contains a bottle of advil, return {"match": false, "confidence": (you determine)}
-
-                Example: Does this image, focusing on a laptop, match the following description? Silver macbook air
-                if the image matches the description, return {"match": true, "confidence": (you determine)}
-                if the image contains a different model or color of laptop, return {"match": false, "confidence": (you determine)}
-
                 """
             )
           ]),
@@ -133,6 +103,10 @@ final class LLMVerifier {
           let argsData = argsString.data(using: .utf8)!
           let matchResult = try self!.jsonDecoder.decode(MatchResult.self, from: argsData)
           let rej: String? = matchResult.match ? nil : matchResult.reason
+          if matchResult.match && matchResult.confidence < self!.confidenceThreshold {
+            return VerificationOutcome(
+              isMatch: false, description: matchResult.description, rejectReason: "low_confidence")
+          }
           let v = VerificationOutcome(
             isMatch: matchResult.match, description: matchResult.description,
             rejectReason: rej)

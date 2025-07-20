@@ -18,10 +18,6 @@ import CoreImage
 import Foundation
 import Vision
 
-
-
-
-
 /// Manages object tracking using Vision framework
 class TrackingManager: VisionTracker {
   /// Sequence handler for performing tracking requests
@@ -31,7 +27,9 @@ class TrackingManager: VisionTracker {
   private var activeTracking: [VNTrackObjectRequest] = []
 
   // legacy performTracking kept private
-  private func performTracking(on buffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) -> Result<[VNTrackObjectRequest], Error> {
+  private func performTracking(on buffer: CVPixelBuffer, orientation: CGImagePropertyOrientation)
+    -> Result<[VNTrackObjectRequest], Error>
+  {
     guard !activeTracking.isEmpty else { return .success([]) }
     do {
       try sequenceHandler.perform(
@@ -39,7 +37,6 @@ class TrackingManager: VisionTracker {
         on: buffer,
         orientation: orientation
       )
-
       // Remove tracking requests that have completed
       activeTracking.removeAll { $0.isLastFrame }
       return .success(activeTracking)
@@ -104,7 +101,9 @@ class TrackingManager: VisionTracker {
   }
 
   // MARK: - VisionTracker
-  func tick(pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation, store: CandidateStore) {
+  func tick(
+    pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation, store: CandidateStore
+  ) {
     switch performTracking(on: pixelBuffer, orientation: orientation) {
     case .success(let requests):
       for req in requests {

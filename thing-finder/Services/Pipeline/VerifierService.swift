@@ -39,7 +39,7 @@ import UIKit
 import Vision
 
 final class VerifierService: VerifierServiceProtocol {
-  private let apiClient: LLMVerifier
+  private let verifier: ImageVerifier
   internal let imgUtils: ImageUtilities
   internal let verificationConfig: VerificationConfig
   private var cancellables: Set<AnyCancellable> = []
@@ -48,8 +48,8 @@ final class VerifierService: VerifierServiceProtocol {
   /// Minimum interval between successive batches of verify() requests.
   private let minVerifyInterval: TimeInterval = 1.0  // seconds
 
-  init(apiClient: LLMVerifier, imgUtils: ImageUtilities, config: VerificationConfig) {
-    self.apiClient = apiClient
+  init(verifier: ImageVerifier, imgUtils: ImageUtilities, config: VerificationConfig) {
+    self.verifier = verifier
     self.imgUtils = imgUtils
     self.verificationConfig = config
   }
@@ -67,7 +67,7 @@ final class VerifierService: VerifierServiceProtocol {
 
     // Split candidates into ones we can auto-match (no text description) and ones needing verification.
     var toVerify: [Candidate] = []
-    if apiClient.targetTextDescription.isEmpty {
+    if verifier.targetTextDescription.isEmpty {
       for cand in pendingUnknown {
         store.update(id: cand.id) { $0.matchStatus = .full }
       }
@@ -117,7 +117,7 @@ final class VerifierService: VerifierServiceProtocol {
 
       store.update(id: cand.id) { $0.matchStatus = .waiting }
 
-      apiClient.verify(imageData: jpg.base64EncodedString())
+      verifier.verify(imageData: jpg.base64EncodedString())
         .sink { completion in
           if case .failure(let err) = completion {
             print("LLM verify error: \(err)")
@@ -141,7 +141,8 @@ final class VerifierService: VerifierServiceProtocol {
               store: store)
           } else {
             store.update(id: cand.id) {
-              if outcome.rejectReason == "unclear_image" {
+              if outcome.rejectReason == "unclear_image" || outcome.rejectReason == "low_confidence"
+              {
                 // Image too blurry / unclear – keep searching so candidate will be retried
                 $0.matchStatus = .unknown
               } else {

@@ -34,7 +34,7 @@ public final class FramePipelineCoordinator: ObservableObject {
   private let nav: NavigationSpeaker
   private let store: CandidateStore
   private let stateMachine: DetectionStateMachine = DetectionStateMachine()
-  private let lifecycle: CandidateLifecycleService
+  private let lifecycle: CandidateLifecycleServiceProtocol
 
   private let targetClasses: [String]
   private let targetDescription: String
@@ -49,7 +49,7 @@ public final class FramePipelineCoordinator: ObservableObject {
     verifier: VerifierServiceProtocol,
     nav: NavigationSpeaker,
     store: CandidateStore = CandidateStore(),
-    lifecycle: CandidateLifecycleService,
+    lifecycle: CandidateLifecycleServiceProtocol,
     targetClasses: [String],
     targetDescription: String
   ) {

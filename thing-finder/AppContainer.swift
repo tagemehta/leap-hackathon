@@ -42,7 +42,7 @@ public final class AppContainer {
       && parsed.plate != nil
     let verifierConfig = VerificationConfig(expectedPlate: parsed.plate, shouldRunOCR: needsOCR)
     let verifier = VerifierService(
-      apiClient: LLMVerifier(targetClasses: classes, targetTextDescription: parsed.remainder),
+      verifier: LLMVerifier(targetClasses: classes, targetTextDescription: parsed.remainder),
       imgUtils: ImageUtilities.shared,
       config: verifierConfig
     )
