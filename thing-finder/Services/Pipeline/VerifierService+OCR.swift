@@ -26,53 +26,41 @@ extension VerifierService {
         orientation: orientation)
       guard let crop = fullImage.cropping(to: rect) else { return }
 
-      let handler = VNImageRequestHandler(cgImage: crop, options: [:])
-      let request = VNRecognizeTextRequest { req, err in
-        var recognized: String?
-        var nextStatus: MatchStatus = .partial
+      var recognized: String?
+      var nextStatus: MatchStatus = .partial
 
-        if let observations = req.results as? [VNRecognizedTextObservation],
-          let best = observations.first?.topCandidates(1).first
-        {
-          recognized = best.string.uppercased().components(separatedBy: CharacterSet.alphanumerics.inverted).joined()
-          let conf = best.confidence
-          let regexOK =
-            self.verificationConfig.regex.firstMatch(
-              in: recognized!, options: [],
-              range: NSRange(location: 0, length: recognized!.count)) != nil
-          let plateMatch =
-            self.verificationConfig.expectedPlate == nil
-            || recognized == self.verificationConfig.expectedPlate
-          if Double(conf) >= self.verificationConfig.ocrConfidenceMin && regexOK && plateMatch {
-            nextStatus = .full
-          }
-//          else if regexOK && !plateMatch {
-//            nextStatus = .rejected
-//          }
+      if let res = self.ocrEngine.recognize(crop: crop) {
+        recognized = res.text
+        let conf = res.confidence
+        let regexOK =
+          self.verificationConfig.regex.firstMatch(
+            in: recognized!, options: [],
+            range: NSRange(location: 0, length: recognized!.count)) != nil
+        let plateMatch =
+          self.verificationConfig.expectedPlate == nil
+          || recognized == self.verificationConfig.expectedPlate
+        if conf >= self.verificationConfig.ocrConfidenceMin && regexOK && plateMatch {
+          nextStatus = .full
         }
-
-        // Update candidate on main queue
-        DispatchQueue.main.async {
-          store.update(id: candidate.id) { cand in
-            cand.ocrAttempts += 1
-            cand.ocrText = recognized
-            if nextStatus == .partial && cand.ocrAttempts >= self.verificationConfig.maxOCRRetries {
-              cand.matchStatus = .rejected
-            } else {
-              cand.matchStatus = nextStatus
-            }
-          }
-
-        }
+//        else if regexOK && !plateMatch {
+//          nextStatus = .rejected
+//        }
       }
-      request.recognitionLanguages = ["en-US"]
-      request.usesLanguageCorrection = false
 
-      do {
-        try handler.perform([request])
-      } catch {
-        print("OCR error: \(error)")
+      // Update candidate on main queue
+      DispatchQueue.main.async {
+        store.update(id: candidate.id) { cand in
+          cand.ocrAttempts += 1
+          cand.ocrText = recognized
+          if nextStatus == .partial && cand.ocrAttempts >= self.verificationConfig.maxOCRRetries {
+            cand.matchStatus = .rejected
+          } else {
+            cand.matchStatus = nextStatus
+          }
+        }
+
       }
     }
   }
 }
+

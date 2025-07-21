@@ -38,24 +38,26 @@ import Foundation
 import UIKit
 import Vision
 
-final class VerifierService: VerifierServiceProtocol {
+public final class VerifierService: VerifierServiceProtocol {
   private let verifier: ImageVerifier
   internal let imgUtils: ImageUtilities
   internal let verificationConfig: VerificationConfig
+  internal let ocrEngine: OCREngine
   private var cancellables: Set<AnyCancellable> = []
   /// Timestamp of the most recent *batch* of verify() requests (i.e., the last tick that sent one or more verify calls).
   private var lastVerifyBatch: Date = .distantPast
   /// Minimum interval between successive batches of verify() requests.
   private let minVerifyInterval: TimeInterval = 1.0  // seconds
 
-  init(verifier: ImageVerifier, imgUtils: ImageUtilities, config: VerificationConfig) {
+  init(verifier: ImageVerifier, imgUtils: ImageUtilities, config: VerificationConfig, ocrEngine: OCREngine = VisionOCREngine()) {
     self.verifier = verifier
     self.imgUtils = imgUtils
     self.verificationConfig = config
+    self.ocrEngine = ocrEngine
   }
 
   /// Called every frame by `FramePipelineCoordinator`.
-  func tick(
+  public func tick(
     pixelBuffer: CVPixelBuffer,
     orientation: CGImagePropertyOrientation,
     imageSize: CGSize,
