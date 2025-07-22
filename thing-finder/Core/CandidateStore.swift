@@ -4,17 +4,31 @@
 //  Observable collection of candidates accessed by all pipeline services.
 //  Thread-safe with main-thread publishes for SwiftUI.
 //
-//  NOTE: Mutation helpers run synchronously – callers are responsible for
-//  ensuring they execute on the main thread.  Background queues must wrap
-//  calls in `DispatchQueue.main.async { ... }`.
+//  NOTE: Mutation helpers are now **internally main-queue synchronized**.
+//  Callers can safely invoke them from any thread.  All writes are performed
+//  on the main thread using a lightweight synchronous hop.
 
 import Combine
+
 import CoreGraphics
 import Foundation
 import Vision
 
 /// Store publishes snapshots so observers have value-type semantics.
 public final class CandidateStore: ObservableObject {
+  // MARK: - Thread-safety helper
+  /// Executes `block` synchronously on the main thread, returning its result.
+  /// If already on the main thread the block is executed directly to avoid
+  /// unnecessary context switching.
+  @inline(__always) @discardableResult
+  private func syncOnMain<R>(_ block: () -> R) -> R {
+    if Thread.isMainThread {
+      return block()
+    } else {
+      return DispatchQueue.main.sync(execute: block)
+    }
+  }
+
   /// Current candidates keyed by id.
   @Published private(set) public var candidates: [CandidateID: Candidate] = [:]
 
@@ -22,22 +36,24 @@ public final class CandidateStore: ObservableObject {
 
   // MARK: Mutation helpers
   public func upsert(_ candidate: Candidate) {
-    candidates[candidate.id] = candidate
+    syncOnMain { candidates[candidate.id] = candidate }
   }
 
   public func remove(id: CandidateID) {
-    candidates.removeValue(forKey: id)
+    syncOnMain { candidates.removeValue(forKey: id) }
   }
 
   public func update(id: CandidateID, _ modify: (inout Candidate) -> Void) {
-    guard var value = candidates[id] else { return }
-    modify(&value)
-    value.lastUpdated = Date()
-    candidates[id] = value
+    syncOnMain {
+      guard var value = candidates[id] else { return }
+      modify(&value)
+      value.lastUpdated = Date()
+      candidates[id] = value
+    }
   }
 
   public func clear() {
-    candidates.removeAll()
+    syncOnMain { candidates.removeAll() }
   }
 
   // MARK: Upsert helpers
@@ -70,16 +86,20 @@ public final class CandidateStore: ObservableObject {
       trackingRequest: req,
       boundingBox: bbox,
       embedding: embedding)
-    candidates[id] = cand
-    return id
+    return syncOnMain {
+      candidates[id] = cand
+      return id
+    }
   }
 
   /// Keep only the most recently updated *matched* candidate (if any).
   public func pruneToSingleMatched() {
     let matched = candidates.values.filter { $0.isMatched }
     guard let winner = matched.max(by: { $0.lastUpdated < $1.lastUpdated }) else { return }
-    for (id, _) in candidates where id != winner.id {
-      candidates.removeValue(forKey: id)
+    syncOnMain {
+      for (id, _) in candidates where id != winner.id {
+        candidates.removeValue(forKey: id)
+      }
     }
   }
 
@@ -109,7 +129,14 @@ public final class CandidateStore: ObservableObject {
 
   public subscript(id: CandidateID) -> Candidate? {
     get { candidates[id] }
-    set { candidates[id] = newValue }
+    set {
+      syncOnMain { candidates[id] = newValue }
+    }
+  }
+  /// Thread-safe read-only snapshot of the current candidates.
+  /// Always executed on the main queue to avoid data races.
+  func snapshot() -> [CandidateID: Candidate] {
+    syncOnMain { candidates }
   }
 }
 

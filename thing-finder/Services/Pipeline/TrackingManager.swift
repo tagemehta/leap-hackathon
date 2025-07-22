@@ -108,7 +108,8 @@ class TrackingManager: VisionTracker {
     case .success(let requests):
       for req in requests {
         guard let det = req.results?.first as? VNDetectedObjectObservation else { continue }
-        if let (id, _) = store.candidates.first(where: { $0.value.trackingRequest === req }) {
+        let snap = store.snapshot()
+        if let (id, _) = snap.first(where: { $0.value.trackingRequest === req }) {
           store.update(id: id) { cand in
             cand.lastBoundingBox = det.boundingBox
           }

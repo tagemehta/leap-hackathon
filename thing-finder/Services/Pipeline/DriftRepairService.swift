@@ -63,7 +63,8 @@ final class DriftRepairService: DriftRepairServiceProtocol {
   ) {
     frameCounter += 1
     guard frameCounter % repairStride == 0 else { return }
-    guard !store.candidates.isEmpty else { return }
+    let snapshot = store.snapshot()
+    guard !snapshot.isEmpty else { return }
 
     // ---------------------------------------------------------------------
     // Per-frame cache: detection UUID → (bboxImageRect, embedding)
@@ -72,7 +73,7 @@ final class DriftRepairService: DriftRepairServiceProtocol {
     var remainingDetections = detections
     let fullCG = imageUtils.cvPixelBuffertoCGImage(buffer: pixelBuffer)
     // For each candidate attempt to find a better detection.
-    for candidate in store.candidates.values {
+    for candidate in snapshot.values {
       guard
         let best = bestMatch(
           for: candidate,

@@ -165,22 +165,22 @@ class DetectionManager: ObjectDetector {
 
 }
 
-// extension UIImage {
-//   func saveToPhotoLibrary(completion: @escaping (Bool, Error?) -> Void) {
-//     PHPhotoLibrary.requestAuthorization { status in
-//       guard status == .authorized else {
-//         completion(
-//           false,
-//           NSError(
-//             domain: "PhotoLibrary", code: 1,
-//             userInfo: [NSLocalizedDescriptionKey: "No permission to access photo library"]))
-//         return
-//       }
+ extension UIImage {
+   func saveToPhotoLibrary(completion: @escaping (Bool, Error?) -> Void) {
+     PHPhotoLibrary.requestAuthorization { status in
+       guard status == .authorized else {
+         completion(
+           false,
+           NSError(
+             domain: "PhotoLibrary", code: 1,
+             userInfo: [NSLocalizedDescriptionKey: "No permission to access photo library"]))
+         return
+       }
 
-//       PHPhotoLibrary.shared().performChanges(
-//         {
-//           PHAssetChangeRequest.creationRequestForAsset(from: self)
-//         }, completionHandler: completion)
-//     }
-//   }
-// }
+       PHPhotoLibrary.shared().performChanges(
+         {
+           PHAssetChangeRequest.creationRequestForAsset(from: self)
+         }, completionHandler: completion)
+     }
+   }
+ }

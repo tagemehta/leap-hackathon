@@ -49,7 +49,10 @@ public final class VerifierService: VerifierServiceProtocol {
   /// Minimum interval between successive batches of verify() requests.
   private let minVerifyInterval: TimeInterval = 1.0  // seconds
 
-  init(verifier: ImageVerifier, imgUtils: ImageUtilities, config: VerificationConfig, ocrEngine: OCREngine = VisionOCREngine()) {
+  init(
+    verifier: ImageVerifier, imgUtils: ImageUtilities, config: VerificationConfig,
+    ocrEngine: OCREngine = VisionOCREngine()
+  ) {
     self.verifier = verifier
     self.imgUtils = imgUtils
     self.verificationConfig = config
@@ -64,27 +67,35 @@ public final class VerifierService: VerifierServiceProtocol {
     viewBounds: CGRect,
     store: CandidateStore
   ) {
-    let pendingUnknown = store.candidates.values.filter { $0.matchStatus == .unknown }
-    guard !pendingUnknown.isEmpty else { return }
+    let now = Date()
+    // Thread-safe read copy of current candidates
+    let candidatesSnapshot = store.snapshot()
+    let pendingUnknown = candidatesSnapshot.values.filter { $0.matchStatus == .unknown }
+
+    // Include stale partial/full candidates for re-verification
+    let staleVerified = candidatesSnapshot.values.filter {
+      ($0.matchStatus == .partial || $0.matchStatus == .full) &&
+      (now.timeIntervalSince($0.lastVerified ?? $0.createdAt) >= self.verificationConfig.reverifyInterval)
+    }
 
     // Split candidates into ones we can auto-match (no text description) and ones needing verification.
     var toVerify: [Candidate] = []
+    toVerify.append(contentsOf: staleVerified)
     if verifier.targetTextDescription.isEmpty {
       for cand in pendingUnknown {
         store.update(id: cand.id) { $0.matchStatus = .full }
       }
     } else {
-      toVerify = pendingUnknown
+      toVerify.append(contentsOf: pendingUnknown)
     }
     guard
-      !toVerify.isEmpty || !store.candidates.values.filter({ $0.matchStatus == .partial }).isEmpty
+      !toVerify.isEmpty || !store.snapshot().values.filter({ $0.matchStatus == .partial }).isEmpty
     else { return }
 
-    let now = Date()
     // --------- OCR retry pass (only when OCR enabled)
     var fullImage: CGImage?
     if self.verificationConfig.shouldRunOCR {
-      let partials = store.candidates.values.filter {
+      let partials = store.snapshot().values.filter {
         $0.matchStatus == .partial && $0.ocrAttempts < self.verificationConfig.maxOCRRetries
       }
       if !partials.isEmpty {
@@ -115,28 +126,37 @@ public final class VerifierService: VerifierServiceProtocol {
       )
       guard let crop = fullImage!.cropping(to: imageRect) else { continue }
 
-      guard let jpg = UIImage(cgImage: crop).jpegData(compressionQuality: 1) else { continue }
-
+      guard
+        let jpg = UIImage(cgImage: crop, scale: 1.0, orientation: UIImage.Orientation(orientation))
+          .jpegData(
+            compressionQuality: 1)
+      else { continue }
       store.update(id: cand.id) { $0.matchStatus = .waiting }
-
-      verifier.verify(imageData: jpg.base64EncodedString())
+      let base64 = jpg.base64EncodedString()
+      verifier.verify(imageData: base64)
         .sink { completion in
           if case .failure(let err) = completion {
             print("LLM verify error: \(err)")
           }
         } receiveValue: { outcome in
+
           if outcome.isMatch {
             store.update(id: cand.id) {
               $0.detectedDescription = outcome.description
+              $0.lastVerified = Date()
             }
             if !self.verificationConfig.shouldRunOCR {
-              store.update(id: cand.id) { $0.matchStatus = .full }
+              store.update(id: cand.id) {
+                $0.matchStatus = .full
+                $0.lastVerified = Date()
+              }
               return
             }
             // Promote to partial and begin OCR verification
             store.update(id: cand.id) {
               $0.matchStatus = .partial
               $0.detectedDescription = outcome.description
+              $0.lastVerified = Date()
             }
             self.enqueueOCR(
               for: cand, fullImage: fullImage!, imageSize: imageSize, orientation: orientation,
@@ -144,6 +164,7 @@ public final class VerifierService: VerifierServiceProtocol {
           } else {
             store.update(id: cand.id) {
               if outcome.rejectReason == "unclear_image" || outcome.rejectReason == "low_confidence"
+                || outcome.rejectReason == "ambiguous"
               {
                 // Image too blurry / unclear – keep searching so candidate will be retried
                 $0.matchStatus = .unknown

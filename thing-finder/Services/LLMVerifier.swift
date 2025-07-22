@@ -38,11 +38,30 @@ public final class LLMVerifier: ImageVerifier {
             MessageContent(
               text:
                 """
-                You are an AI assistant that determines 
-                if the object in the pictured image matches the description.
+                You are an expert automotive identification specialist with deep knowledge of car makes, models, and visual characteristics.
+
+                Your task is to determine if the vehicle in the image matches the provided description with extremely high accuracy.
+
+                EXPERTISE GUIDELINES:
+                - Pay close attention to make-specific design elements (grilles, headlights, body lines)
+                - Distinguish between similar models within the same manufacturer
+                - Identify model years based on subtle design changes
+                - Recognize trim levels from badging and exterior features
+                - Differentiate body styles (sedan, SUV, crossover, hatchback, etc.)
+                - Accurately assess color accounting for lighting conditions
+
+                CRITICAL DETAILS TO VERIFY:
+                1. Make (manufacturer) - e.g., Toyota, Honda, BMW
+                2. Model - e.g., Camry, Civic, X5
+                3. Body style - e.g., sedan, SUV, truck
+                4. Color - accounting for lighting variations
+                5. Distinctive features mentioned in the description
+
+                For ride-sharing identification, a partial match on make/model/color is often sufficient even if minor details differ.
+
                 Respond strictly in JSON format as per the provided schema.
                 You are doing this for a blind audience in an app that helps them navigate to objects.
-                Accuracy is mission critical.
+                Accuracy is mission critical. Err on the side of caution.
                 """
             )
           ]),
@@ -67,15 +86,18 @@ public final class LLMVerifier: ImageVerifier {
                 "match": FunctionProperty(
                   type: "boolean", description: "Indicates if the image matches the description."),
                 "confidence": FunctionProperty(
-                  type: "number", description: "How confident are you in this prediction"),
+                  type: "number",
+                  description: "What is the probability (confidence) that this is a match?"),
                 "reason": FunctionProperty(
-                  type: "string", description: "If match=false, why not? One enum value.",
+                  type: "string",
+                  description:
+                    "If match=false, why not? One enum value. If match=true, this should be 'success'. If there isn't enough information to make a decision, this should be 'ambigous.' Returning unclear/ambiguous is better than a false positive, we can always send again from a different angle",
                   enumValues: [
                     "success",
                     "unclear_image",
                     "wrong_object_class",
                     "wrong_model_or_color",
-                    // "license_plate_not_visible",
+                    "ambiguous",
                     "license_plate_mismatch",
                     "other_mismatch",
                   ]),

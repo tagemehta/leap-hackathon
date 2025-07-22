@@ -87,7 +87,7 @@ class CameraViewModel: NSObject, ObservableObject, FrameProviderDelegate {
           case .partial: color = .orange
           case .rejected: color = .red
           }
-          return BoundingBox(imageRect: imageRect, viewRect: viewRect, label: "", color: color!)
+          return BoundingBox(imageRect: imageRect, viewRect: viewRect, label: cand.id.uuidString, color: color!)
         }
       }
       .store(in: &cancellables)

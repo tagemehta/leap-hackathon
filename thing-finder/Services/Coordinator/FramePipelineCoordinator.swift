@@ -111,8 +111,9 @@ public final class FramePipelineCoordinator: ObservableObject {
     }
 
     // 6. Update global phase
+    let snapshot = store.snapshot()
     var machine = stateMachine
-    machine.update(snapshot: Array(store.candidates.values))
+    machine.update(snapshot: Array(snapshot.values))
     let phase = machine.phase
 
     // 7.5 Determine target bounding box & approximate distance for navigation cues
@@ -122,7 +123,7 @@ public final class FramePipelineCoordinator: ObservableObject {
       targetBBox = store[id]?.lastBoundingBox
     case .verifying(let ids):
       // Prefer a partial match if any of the verifying IDs are currently partial
-      if let partial = store.candidates.values.first(where: {
+      if let partial = snapshot.values.first(where: {
         ids.contains($0.id) && $0.matchStatus == .partial
       }) {
         targetBBox = partial.lastBoundingBox
@@ -136,7 +137,7 @@ public final class FramePipelineCoordinator: ObservableObject {
       // Sample depth at the box centre using the supplied depthAt closure.
       let center: CGPoint
       switch captureType {
-      case .avFoundation:
+      case .avFoundation, .videoFile:
         // Convert view-rect back to normalized image rect for AVF buffers
         let normalized = VNNormalizedRectForImageRect(
           box, Int(imageSize.width), Int(imageSize.height))
@@ -152,14 +153,14 @@ public final class FramePipelineCoordinator: ObservableObject {
     // 7.5 Navigation tick
     nav.tick(
       at: Date(),
-      candidates: Array(store.candidates.values),
+      candidates: Array(snapshot.values),
       targetBox: targetBBox,
       distance: targetDistance)
 
     // 8. Publish for UI
     presentation = FramePresentation(
       phase: phase,
-      candidates: Array(store.candidates.values)
+      candidates: Array(snapshot.values)
     )
   }
 }

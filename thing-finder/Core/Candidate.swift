@@ -37,6 +37,9 @@ public struct Candidate: Identifiable, Equatable {
 
   /// Verification progress for this candidate.
   public var matchStatus: MatchStatus = .unknown
+  /// Timestamp of the most recent *successful* LLM verification (partial or full).
+  public var lastVerified: Date?
+  
   /// Human-readable description returned by LLM, e.g. “blue Toyota Camry”.
   public var detectedDescription: String?
   /// Reason for rejection when matchStatus == .rejected.

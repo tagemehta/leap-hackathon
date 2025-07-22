@@ -103,7 +103,8 @@ public final class CandidateLifecycleService: CandidateLifecycleServiceProtocol 
     store.pruneToSingleMatched()
     var isLost = false
     // 3. Update missCount + drop stale
-    for (id, cand) in store.candidates {
+    let snapshot = store.snapshot()
+    for (id, cand) in snapshot {
       let overlaps = detections.contains { det in
         det.boundingBox.iou(with: cand.lastBoundingBox) > 0.1
       }

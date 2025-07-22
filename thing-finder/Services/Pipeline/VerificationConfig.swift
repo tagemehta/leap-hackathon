@@ -21,6 +21,9 @@ public struct VerificationConfig {
   /// Maximum times we will attempt OCR on a candidate before rejecting.
   public var maxOCRRetries: Int
 
+  /// Time after which partial/full candidates should be re-verified (seconds).
+  public var reverifyInterval: TimeInterval
+  
   /// Whether we should run OCR for this verification cycle.
   public var shouldRunOCR: Bool
 
@@ -34,7 +37,8 @@ public struct VerificationConfig {
     ocrConfidenceMin: Double = 0.2,  // What are the odds you get an almost exact match on a license plate w/ the same make model at the same time in the same place
     maxOCRRetries: Int = 30,
     cooldownAfterRejectSecs: TimeInterval = 10,
-    shouldRunOCR: Bool = false
+    shouldRunOCR: Bool = false,
+    reverifyInterval: TimeInterval = 5
   ) {
     self.expectedPlate = expectedPlate?.uppercased()
     self.regex = regex
@@ -42,5 +46,6 @@ public struct VerificationConfig {
     self.maxOCRRetries = maxOCRRetries
     self.cooldownAfterRejectSecs = cooldownAfterRejectSecs
     self.shouldRunOCR = shouldRunOCR
+    self.reverifyInterval = reverifyInterval
   }
 }

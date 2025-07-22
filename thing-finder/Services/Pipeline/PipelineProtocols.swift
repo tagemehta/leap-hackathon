@@ -18,6 +18,8 @@ import Vision
 public enum CaptureSourceType {
   case avFoundation
   case arKit
+  /// Playback from a local movie file via `VideoFileFrameProvider`.
+  case videoFile
 }
 
 // MARK: - Object Detection

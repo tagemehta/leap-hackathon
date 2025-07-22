@@ -2,3 +2,5 @@
 app.todo
 Secrets.xcconfig
 CVModels/
+*.MOV
+.build/*
