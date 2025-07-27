@@ -153,7 +153,7 @@ struct SettingsView: View {
             VStack(alignment: .leading) {
               Text(
                 "Verification Cooldown: \(String(format: "%.1f", settings.verificationCooldown))s")
-              Slider(value: $settings.verificationCooldown, in: 0.5...5.0, step: 0.5)
+              Slider(value: $settings.verificationCooldown, in: 0.5...10.0, step: 0.5)
                 .accessibilityLabel("Verification Cooldown")
             }
 
@@ -167,34 +167,6 @@ struct SettingsView: View {
               "Max Lost Frames: \(settings.maxLostFrames)",
               value: $settings.maxLostFrames,
               in: 1...10)
-          }
-
-          Section(header: Text("Tracking Drift Thresholds")) {
-            VStack(alignment: .leading) {
-              Text("Min IoU: \(String(format: "%.2f", settings.minIouThreshold))")
-              Slider(value: $settings.minIouThreshold, in: 0.1...0.8, step: 0.05)
-                .accessibilityLabel("Minimum IoU Threshold")
-            }
-
-            VStack(alignment: .leading) {
-              Text("Max Center Shift: \(String(format: "%.2f", settings.maxCenterShift))")
-              Slider(value: $settings.maxCenterShift, in: 0.05...0.5, step: 0.05)
-                .accessibilityLabel("Maximum Center Shift")
-            }
-
-            VStack(alignment: .leading) {
-              Text("Max Area Shift: \(String(format: "%.2f", settings.maxAreaShift))")
-              Slider(value: $settings.maxAreaShift, in: 0.1...0.8, step: 0.05)
-                .accessibilityLabel("Maximum Area Shift")
-            }
-
-            VStack(alignment: .leading) {
-              Text(
-                "Min Tracking Confidence: \(String(format: "%.2f", settings.minTrackingConfidence))"
-              )
-              Slider(value: $settings.minTrackingConfidence, in: 0.1...0.8, step: 0.05)
-                .accessibilityLabel("Minimum Tracking Confidence")
-            }
           }
         }
 

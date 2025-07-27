@@ -34,7 +34,7 @@ public final class AppContainer {
     // 3. Drift repair using shared ImageUtilities
     let drift = DriftRepairService(imageUtils: ImageUtilities.shared)
 
-    // 4. Verifier – DefaultVerifierService wired with LLMVerifier
+    // 4. Verifier – DefaultVerifierService wired with TrafficEyeVerifier
     // Extract potential license plate and remaining description
     let parsed = DescriptionParser.extractPlate(from: description)
     let needsOCR =
@@ -42,7 +42,8 @@ public final class AppContainer {
       && parsed.plate != nil
     let verifierConfig = VerificationConfig(expectedPlate: parsed.plate, shouldRunOCR: needsOCR)
     let verifier = VerifierService(
-      verifier: LLMVerifier(targetClasses: classes, targetTextDescription: parsed.remainder),
+      verifier: TrafficEyeVerifier(
+        targetClasses: classes, targetTextDescription: description, config: verifierConfig),
       imgUtils: ImageUtilities.shared,
       config: verifierConfig
     )

@@ -71,7 +71,7 @@ class Settings: ObservableObject {
   @AppStorage("confidence_threshold") var confidenceThreshold: Double = 0.4
 
   /// Delay between LLM verifications (seconds)
-  @AppStorage("verification_cooldown") var verificationCooldown: Double = 2.0
+  @AppStorage("verification_cooldown") var verificationCooldown: Double = 10.0
 
   /// Number of frames to keep target before declaring it expired
   @AppStorage("target_lifetime") var targetLifetime: Int = 700
@@ -80,18 +80,6 @@ class Settings: ObservableObject {
   @AppStorage("max_lost_frames") var maxLostFrames: Int = 4
 
   // MARK: - Tracking Drift Thresholds
-
-  /// Minimum IoU (intersection over union) to maintain tracking
-  @AppStorage("min_iou_threshold") var minIouThreshold: Double = 0.7
-
-  /// Maximum allowed center shift (as fraction of diagonal)
-  @AppStorage("max_center_shift") var maxCenterShift: Double = 0.25
-
-  /// Maximum allowed area change (as fraction of original area)
-  @AppStorage("max_area_shift") var maxAreaShift: Double = 0.35
-
-  /// Minimum tracking confidence to maintain tracking
-  @AppStorage("min_tracking_confidence") var minTrackingConfidence: Double = 0.25
 
   // MARK: - Feedback Mode Settings
 
@@ -114,9 +102,6 @@ class Settings: ObservableObject {
 
   /// Smoothing factor for exponential moving average (0.0-1.0)
   @AppStorage("smoothing_alpha") var smoothingAlpha: Double = 0.2
-
-  /// Number of frames to average for FPS calculation
-  @AppStorage("fps_window") var fpsWindow: Int = 10
 
   /// Enable developer mode with additional settings
   @AppStorage("developer_mode") var developerMode: Bool = false
@@ -216,12 +201,6 @@ extension Settings {
     targetLifetime = 700
     maxLostFrames = 4
 
-    // Tracking Drift Thresholds
-    minIouThreshold = 0.7
-    maxCenterShift = 0.25
-    maxAreaShift = 0.35
-    minTrackingConfidence = 0.25
-
     // Feedback Mode Settings
     enableAudio = true
     enableHaptics = false
@@ -230,7 +209,6 @@ extension Settings {
 
     // Advanced Settings
     smoothingAlpha = 0.2
-    fpsWindow = 10
     developerMode = false
 
     // Force UserDefaults to synchronize changes

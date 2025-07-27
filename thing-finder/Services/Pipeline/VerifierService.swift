@@ -47,7 +47,7 @@ public final class VerifierService: VerifierServiceProtocol {
   /// Timestamp of the most recent *batch* of verify() requests (i.e., the last tick that sent one or more verify calls).
   private var lastVerifyBatch: Date = .distantPast
   /// Minimum interval between successive batches of verify() requests.
-  private let minVerifyInterval: TimeInterval = 1.0  // seconds
+  private let minVerifyInterval: TimeInterval = 3  // seconds
 
   init(
     verifier: ImageVerifier, imgUtils: ImageUtilities, config: VerificationConfig,
@@ -74,10 +74,10 @@ public final class VerifierService: VerifierServiceProtocol {
 
     // Include stale partial/full candidates for re-verification
     let staleVerified = candidatesSnapshot.values.filter {
-      ($0.matchStatus == .partial || $0.matchStatus == .full) &&
-      (now.timeIntervalSince($0.lastVerified ?? $0.createdAt) >= self.verificationConfig.reverifyInterval)
+      ($0.matchStatus == .partial || $0.matchStatus == .full)
+        && (now.timeIntervalSince($0.lastVerified ?? $0.createdAt)
+          >= self.verificationConfig.reverifyInterval)
     }
-
     // Split candidates into ones we can auto-match (no text description) and ones needing verification.
     var toVerify: [Candidate] = []
     toVerify.append(contentsOf: staleVerified)
@@ -126,17 +126,20 @@ public final class VerifierService: VerifierServiceProtocol {
       )
       guard let crop = fullImage!.cropping(to: imageRect) else { continue }
 
-      guard
-        let jpg = UIImage(cgImage: crop, scale: 1.0, orientation: UIImage.Orientation(orientation))
-          .jpegData(
-            compressionQuality: 1)
-      else { continue }
-      store.update(id: cand.id) { $0.matchStatus = .waiting }
-      let base64 = jpg.base64EncodedString()
-      verifier.verify(imageData: base64)
+      let img = UIImage(cgImage: crop, scale: 1.0, orientation: UIImage.Orientation(orientation))
+      // For first-time verification show .waiting; for periodic re-verification keep current status to avoid extra speech.
+      if cand.matchStatus == .unknown {
+        store.update(id: cand.id) { $0.matchStatus = .waiting }
+      }
+      verifier.verify(image: img)
         .sink { completion in
           if case .failure(let err) = completion {
             print("LLM verify error: \(err)")
+            // If we failed to decode JSON or the network dropped, mark candidate uncertain so we will retry.
+            store.update(id: cand.id) {
+              $0.matchStatus = .unknown
+              $0.rejectReason = "ambiguous"
+            }
           }
         } receiveValue: { outcome in
 
@@ -145,7 +148,7 @@ public final class VerifierService: VerifierServiceProtocol {
               $0.detectedDescription = outcome.description
               $0.lastVerified = Date()
             }
-            if !self.verificationConfig.shouldRunOCR {
+            if !self.verificationConfig.shouldRunOCR || outcome.isPlateMatch {
               store.update(id: cand.id) {
                 $0.matchStatus = .full
                 $0.lastVerified = Date()
@@ -164,7 +167,7 @@ public final class VerifierService: VerifierServiceProtocol {
           } else {
             store.update(id: cand.id) {
               if outcome.rejectReason == "unclear_image" || outcome.rejectReason == "low_confidence"
-                || outcome.rejectReason == "ambiguous"
+                || outcome.rejectReason == "ambiguous" || outcome.rejectReason == "api_error"
               {
                 // Image too blurry / unclear – keep searching so candidate will be retried
                 $0.matchStatus = .unknown

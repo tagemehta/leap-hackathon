@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import UIKit
 
 public final class LLMVerifier: ImageVerifier {
   private var lastVerifiedDate = Date()
@@ -23,14 +24,17 @@ public final class LLMVerifier: ImageVerifier {
     self.targetTextDescription = targetTextDescription
   }
 
-  public func verify(imageData: String) -> AnyPublisher<VerificationOutcome, Error> {
+  public func verify(image: UIImage) -> AnyPublisher<VerificationOutcome, Error> {
+    guard let base64 = image.jpegData(compressionQuality: 1)?.base64EncodedString() else {
+      return Fail(error: NSError(domain: "", code: 0, userInfo: nil)).eraseToAnyPublisher()
+    }
     lastVerifiedDate = Date()
     var request = URLRequest(url: endpoint)
     request.httpMethod = "POST"
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     let payload = ChatCompletionRequest(
-      model: "gpt-4o",
+      model: "gpt-4.1-mini",
       messages: [
         Message(
           role: "system",
@@ -72,7 +76,7 @@ public final class LLMVerifier: ImageVerifier {
               text:
                 "Does this image, focusing on \(targetClasses.joined(separator: ", or ")), match the following description? \(targetTextDescription)"
             ),
-            MessageContent(imageURL: "data:image/png;base64,\(imageData)"),
+            MessageContent(imageURL: "data:image/png;base64,\(base64)"),
           ]),
       ],
       tools: [
@@ -102,13 +106,15 @@ public final class LLMVerifier: ImageVerifier {
                     "other_mismatch",
                   ]),
                 "description": FunctionProperty(
-                  type: "string", description: "Short natural-language description of the object"),
+                  type: "string",
+                  description:
+                    "Short natural-language description of the object eg. [color, make, model]"),
               ],
               required: ["match", "confidence", "description", "reason"]
             )
           ))
       ],
-      max_tokens: 50
+      max_tokens: 100
     )
 
     do {
@@ -117,7 +123,10 @@ public final class LLMVerifier: ImageVerifier {
       return Fail(error: error).eraseToAnyPublisher()
     }
     return URLSession.shared.dataTaskPublisher(for: request)
-      .tryMap(\.data)
+      .tryMap {
+        //        print(String(data: $0.data, encoding: .utf8))
+        return $0.data
+      }
       .decode(type: ChatCompletionResponse.self, decoder: jsonDecoder)
       .tryMap { [weak self] response in
 
@@ -125,12 +134,13 @@ public final class LLMVerifier: ImageVerifier {
           let argsData = argsString.data(using: .utf8)!
           let matchResult = try self!.jsonDecoder.decode(MatchResult.self, from: argsData)
           let rej: String? = matchResult.match ? nil : matchResult.reason
+          print(matchResult.confidence)
           if matchResult.match && matchResult.confidence < self!.confidenceThreshold {
             return VerificationOutcome(
-              isMatch: false, description: matchResult.description, rejectReason: "low_confidence")
+              isMatch: false, description: matchResult.description!, rejectReason: "low_confidence")
           }
           let v = VerificationOutcome(
-            isMatch: matchResult.match, description: matchResult.description,
+            isMatch: matchResult.match, description: matchResult.description!,
             rejectReason: rej)
           return v
         } else {

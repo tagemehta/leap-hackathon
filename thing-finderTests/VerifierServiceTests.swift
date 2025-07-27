@@ -15,7 +15,7 @@ private final class MockVerifier2: ImageVerifier {
   var nextOutcome: VerificationOutcome = VerificationOutcome(isMatch: true, description: "A car", rejectReason: nil)
   var verifyCalls = 0
 
-  func verify(imageData: String) -> AnyPublisher<VerificationOutcome, Error> {
+  func verify(imageData: Data) -> AnyPublisher<VerificationOutcome, Error> {
     verifyCalls += 1
     return Just(nextOutcome)
       .setFailureType(to: Error.self)

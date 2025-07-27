@@ -8,7 +8,7 @@ import Combine
 final class ConstantMatchVerifier: ImageVerifier {
     var targetClasses: [String] = ["car"]
     var targetTextDescription: String = "desc"
-    func verify(imageData: String) -> AnyPublisher<VerificationOutcome, Error> {
+    func verify(imageData: Data) -> AnyPublisher<VerificationOutcome, Error> {
         Just(VerificationOutcome(isMatch: true, description: "desc", rejectReason: nil))
             .setFailureType(to: Error.self)
             .eraseToAnyPublisher()

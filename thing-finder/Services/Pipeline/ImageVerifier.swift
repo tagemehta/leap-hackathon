@@ -10,19 +10,22 @@
 
 import Combine
 import Foundation
+import UIKit
+
 /// Lightweight outcome model shared between verifier implementations and tests.
 public struct VerificationOutcome {
   public let isMatch: Bool
   public let description: String
   public let rejectReason: String?
-  public init(isMatch: Bool, description: String, rejectReason: String?) {
+  public let isPlateMatch: Bool
+  public init(isMatch: Bool, description: String, rejectReason: String?, isPlateMatch: Bool = false)
+  {
     self.isMatch = isMatch
     self.description = description
     self.rejectReason = rejectReason
+    self.isPlateMatch = isPlateMatch
   }
 }
-
-
 
 /// Protocol that any verification engine (LLM, on-device model, etc.) must
 /// satisfy so the pipeline can request verifications agnostically.
@@ -33,7 +36,7 @@ public protocol ImageVerifier {
   var targetTextDescription: String { get }
 
   /// Returns a publisher that eventually emits a `VerificationOutcome`.
-  func verify(imageData: String) -> AnyPublisher<VerificationOutcome, Error>
+  func verify(image: UIImage) -> AnyPublisher<VerificationOutcome, Error>
 
   /// Seconds since the last call to `verify` finished.
   func timeSinceLastVerification() -> TimeInterval

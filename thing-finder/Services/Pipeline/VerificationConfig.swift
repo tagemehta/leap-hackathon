@@ -23,7 +23,7 @@ public struct VerificationConfig {
 
   /// Time after which partial/full candidates should be re-verified (seconds).
   public var reverifyInterval: TimeInterval
-  
+
   /// Whether we should run OCR for this verification cycle.
   public var shouldRunOCR: Bool
 
@@ -38,13 +38,13 @@ public struct VerificationConfig {
     maxOCRRetries: Int = 30,
     cooldownAfterRejectSecs: TimeInterval = 10,
     shouldRunOCR: Bool = false,
-    reverifyInterval: TimeInterval = 5
+    reverifyInterval: TimeInterval = 10
   ) {
+    self.cooldownAfterRejectSecs = cooldownAfterRejectSecs
     self.expectedPlate = expectedPlate?.uppercased()
     self.regex = regex
     self.ocrConfidenceMin = ocrConfidenceMin
     self.maxOCRRetries = maxOCRRetries
-    self.cooldownAfterRejectSecs = cooldownAfterRejectSecs
     self.shouldRunOCR = shouldRunOCR
     self.reverifyInterval = reverifyInterval
   }
