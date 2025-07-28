@@ -1,8 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// Emits plain direction words ("left", "right", "still") based on the
-/// bounding box centre X normalised to 0–1.
+/// Emits direction words with distance based on the bounding box centre X normalised to 0–1.
 final class DirectionSpeechController {
   private let config: NavigationFeedbackConfig
   private let speaker: SpeechOutput
@@ -15,24 +14,40 @@ final class DirectionSpeechController {
   }
 
   /// Pass `nil` when there is no active target against which to provide direction.
-  func tick(targetBox: CGRect?, timestamp: Date, settings: Settings) {
+  func tick(targetBox: CGRect?, distance: Double?, timestamp: Date, settings: Settings) {
     guard let box = targetBox else { return }
     let newDir = settings.getDirection(normalizedX: box.midX)
     let elapsed = timestamp.timeIntervalSince(timeLastSpoken)
+
+    var distanceText: String = ""
+    if let dist = distance {
+      let roundedDistance = Int(round(dist))
+      distanceText = "\(roundedDistance) meters"
+
+    }
+
+    let announcement: String
     if newDir == lastDirection {
       if elapsed > config.speechRepeatInterval {
-        speak(text: "Still " + newDir.rawValue)
+        announcement = "Still \(newDir.rawValue), \(distanceText)"
+      } else {
+        return  // Skip announcement
       }
     } else {
       if elapsed > config.directionChangeInterval {
-        speak(text: newDir.rawValue)
+        announcement =
+          distanceText.isEmpty ? newDir.rawValue : "\(newDir.rawValue), \(distanceText)"
         lastDirection = newDir
+      } else {
+        return  // Skip announcement
       }
     }
+
+    speak(text: announcement)
   }
 
   private func speak(text: String) {
     timeLastSpoken = Date()
-    speaker.speak(text, rate: 0.5) // TODO - settings config
+    speaker.speak(text)
   }
 }

@@ -39,14 +39,15 @@ final class VerifierEvaluationTests: XCTestCase {
   private func runSuite(_ cases: [Case]) -> AnyPublisher<Metrics, Error> {
     let testCases = Array(cases[3...4])
     let verifiers = testCases.map {
-      TrafficEyeVerifier(targetTextDescription: $0.target_description)
+      TrafficEyeVerifier(targetTextDescription: $0.target_description, config: VerificationConfig(expectedPlate: nil))
     }
 
     return Publishers.MergeMany(
       testCases.enumerated().map { (idx, c) in
         let verifier = verifiers[idx]
         let imageBytes = Data(base64Encoded: c.image_b64)!
-        return verifier.verify(imageData: imageBytes)
+        let image = UIImage(data: imageBytes)!
+        return verifier.verify(image: image)
           .map { (idx, c, $0) }
           .catch { _ in
             Just(
@@ -140,12 +141,14 @@ final class VerifierEvaluationTests: XCTestCase {
     var bag = Set<AnyCancellable>()
 
     func makeLLM(c: Case) -> AnyPublisher<VerificationOutcome, Error> {
-      LLMVerifier(targetClasses: ["car"], targetTextDescription: c.target_description)
-        .verify(imageData: Data(base64Encoded: c.image_b64)!)
+      let image = UIImage(data: Data(base64Encoded: c.image_b64)!)
+      return LLMVerifier(targetClasses: ["car"], targetTextDescription: c.target_description)
+        .verify(image: image!)
     }
     func makeTwo(c: Case) -> AnyPublisher<VerificationOutcome, Error> {
-      TwoStepVerifier(targetTextDescription: c.target_description)
-        .verify(imageData: Data(base64Encoded: c.image_b64)!)
+      let image = UIImage(data: Data(base64Encoded: c.image_b64)!)
+      return TwoStepVerifier(targetTextDescription: c.target_description)
+        .verify(image: image!)
     }
 
     runSuite(cases)

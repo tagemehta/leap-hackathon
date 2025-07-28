@@ -19,6 +19,7 @@ public final class AppContainer {
 
   // Build a fully-wired coordinator for a given capture mode.
   func makePipeline(classes: [String], description: String) -> FramePipelineCoordinator {
+    let settings = Settings()
     // MARK: Concrete service wiring
     // 1. Detector
     let mlModel: VNCoreMLModel = {
@@ -50,8 +51,8 @@ public final class AppContainer {
 
     // 5. Navigation manager (frame-driven)
     let nav = FrameNavigationManager(
-      settings: Settings(),
-      speaker: Speaker())
+      settings: settings,
+      speaker: Speaker(settings: settings))
 
     // 6. Lifecycle manager
     let lifecycle = CandidateLifecycleService(imgUtils: ImageUtilities.shared)

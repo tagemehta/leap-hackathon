@@ -82,7 +82,10 @@ final class DriftRepairService: DriftRepairServiceProtocol {
           orientation: orientation,
           embedCache: &embedCache
         )
-      else { continue }
+      else {
+        store.update(id: candidate.id) { $0.lastBoundingBox = .zero }  // this is marking for destruction
+        continue
+      }
 
       // Replace tracking request & bbox
       let newRequest = VNTrackObjectRequest(detectedObjectObservation: best)
@@ -137,15 +140,23 @@ final class DriftRepairService: DriftRepairServiceProtocol {
           sim = (try? candEmb.cosineSimilarity(to: emb)) ?? 0
         }
       }
+      // Combine similarity with center-distance penalty
+      let candCenter = CGPoint(x: candidate.lastBoundingBox.midX, y: candidate.lastBoundingBox.midY)
+      let detCenter = CGPoint(x: det.boundingBox.midX, y: det.boundingBox.midY)
+      let dx = candCenter.x - detCenter.x
+      let dy = candCenter.y - detCenter.y
+      let centerDist = sqrt(dx * dx + dy * dy)
+      let maxDist: CGFloat = 0.15  // ~15 % of normalized space
+      guard centerDist <= maxDist else { continue }
+
       let score = sim
-      if score > bestScore {
+      if score > simThreshold && score > bestScore {
         bestScore = score
         best = det
       }
       // Early exit if perfect match
       if bestScore >= 0.99 { break }
     }
-
     if let best = best, let idx = detections.firstIndex(of: best) {
       detections.remove(at: idx)
       return best

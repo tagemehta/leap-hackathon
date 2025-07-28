@@ -12,7 +12,7 @@ public struct NavigationFeedbackConfig {
 
 // MARK: - Small Output Protocols
 public protocol SpeechOutput {
-    func speak(_ text: String, rate: Float)
+    func speak(_ text: String)
 }
 
 public protocol Beeper {

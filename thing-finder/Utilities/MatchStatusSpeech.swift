@@ -8,21 +8,24 @@
 import Foundation
 
 enum MatchStatusSpeech {
-  static func phrase(for status: MatchStatus, recognisedText: String? = nil, detectedDescription: String? = nil, rejectReason: String? = nil) -> String? {
+  static func phrase(
+    for status: MatchStatus, recognisedText: String? = nil, detectedDescription: String? = nil,
+    rejectReason: String? = nil
+  ) -> String? {
     switch status {
     case .waiting:
       return "Waiting for verification"
     case .partial:
       if let desc = detectedDescription {
-        return "Navigating to " + desc
+        return "Navigating to \(desc). Warning: Plate not visible yet"
       }
       return "Plate not visible yet"
     case .full:
-      if let desc = detectedDescription {
-        return "Found " + desc
-      }
       if let plate = recognisedText {
         return "Found matching plate \(plate)"
+      }
+      if let desc = detectedDescription {
+        return "Found \(desc)"
       }
       return "Found match"
     case .rejected:
@@ -34,7 +37,7 @@ enum MatchStatusSpeech {
       return nil
     }
   }
-  
+
   private static func prettyReason(_ raw: String) -> String {
     switch raw {
     case "unclear_image": return "image unclear"

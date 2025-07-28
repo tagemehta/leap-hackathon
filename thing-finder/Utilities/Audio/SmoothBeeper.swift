@@ -58,13 +58,13 @@ final class SmoothBeeper: Beeper {
   }
 
   // MARK: – Beeper protocol
-  func start(frequency: Double, volume: Float) {
+  func start(frequency: Double, volume: Float = 1.0) {
     // Frequency is mapped to interval: higher frequency beeps faster.
     let interval = max(minInterval, 1.0 / frequency)
     updateVolume(to: Double(volume))
     start(interval: interval)
   }
-  
+
   // MARK: – Public API
   /// Dynamically adjust the output volume (0.0 – 1.0).
   func updateVolume(to newVolume: Double) {

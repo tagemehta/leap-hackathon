@@ -30,7 +30,7 @@ final class FrameNavigationManager: NavigationSpeaker {
               targetBox: CGRect?,
               distance: Double?) {
         announcer.tick(candidates: candidates, timestamp: timestamp)
-        dirController.tick(targetBox: targetBox, timestamp: timestamp, settings: settings)
-        beepController.tick(distance: distance, timestamp: timestamp)
+        dirController.tick(targetBox: targetBox, distance: distance, timestamp: timestamp, settings: settings)
+        beepController.tick(targetBox: targetBox, timestamp: timestamp)
     }
 }

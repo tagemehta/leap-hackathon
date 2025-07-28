@@ -1,9 +1,7 @@
-import ARKit
 import SwiftUI
 
 struct SettingsView: View {
   @ObservedObject var settings: Settings
-
 
   var body: some View {
     NavigationView {
@@ -11,9 +9,9 @@ struct SettingsView: View {
         // MARK: - Navigation Feedback
         Section(header: Text("Navigation Feedback")) {
           Toggle("Navigate on Partial", isOn: $settings.allowPartialNavigation)
-//          Toggle("Audio Beeps", isOn: $settings.enableAudio)
-//          Toggle("Speech Guidance", isOn: $settings.enableSpeech)
-//          Toggle("Haptic Feedback", isOn: $settings.enableHaptics)
+          //          Toggle("Audio Beeps", isOn: $settings.enableAudio)
+          //          Toggle("Speech Guidance", isOn: $settings.enableSpeech)
+          //          Toggle("Haptic Feedback", isOn: $settings.enableHaptics)
 
           VStack(alignment: .leading) {
             Text("Speech Rate: \(String(format: "%.1f", settings.speechRate))")
@@ -98,49 +96,49 @@ struct SettingsView: View {
         }
 
         // MARK: - Camera Settings
-//        Section(header: Text("Camera Mode")) {
-//          Toggle(isOn: $settings.useARMode) {
-//            VStack(alignment: .leading, spacing: 4) {
-//              Text(settings.useARMode ? "AR Mode" : "Default Mode")
-//
-//              if settings.hasLiDAR && settings.useARMode {
-//                Text(
-//                  "Recommended: Switch to default mode. Able to provide same functionality"
-//                )
-//                .font(.caption)
-//                .foregroundColor(.secondary)
-//              } else if !settings.useARMode {
-//                Text("Optional: Switch to AR Mode for depth estimation")
-//                  .font(.caption)
-//                  .foregroundColor(.secondary)
-//              }
-//            }
-//          }
-//
-//          if settings.useARMode {
-//            VStack(alignment: .leading, spacing: 4) {
-//              HStack(spacing: 4) {
-//                Image(systemName: "battery.25")
-//                Text("Note: AR mode uses more battery")
-//              }
-//              .font(.caption)
-//              .foregroundColor(.orange)
-//
-//              if settings.hasLiDAR {
-//                Text(
-//                  "LiDAR is available on this device. Default mode is recommended for most use cases."
-//                )
-//                .font(.caption2)
-//                .foregroundColor(.secondary)
-//              } else {
-//                Text("AR mode provides better distance estimation on devices without LiDAR.")
-//                  .font(.caption2)
-//                  .foregroundColor(.secondary)
-//              }
-//            }
-//            .padding(.top, 4)
-//          }
-//        }
+        //        Section(header: Text("Camera Mode")) {
+        //          Toggle(isOn: $settings.useARMode) {
+        //            VStack(alignment: .leading, spacing: 4) {
+        //              Text(settings.useARMode ? "AR Mode" : "Default Mode")
+        //
+        //              if settings.hasLiDAR && settings.useARMode {
+        //                Text(
+        //                  "Recommended: Switch to default mode. Able to provide same functionality"
+        //                )
+        //                .font(.caption)
+        //                .foregroundColor(.secondary)
+        //              } else if !settings.useARMode {
+        //                Text("Optional: Switch to AR Mode for depth estimation")
+        //                  .font(.caption)
+        //                  .foregroundColor(.secondary)
+        //              }
+        //            }
+        //          }
+        //
+        //          if settings.useARMode {
+        //            VStack(alignment: .leading, spacing: 4) {
+        //              HStack(spacing: 4) {
+        //                Image(systemName: "battery.25")
+        //                Text("Note: AR mode uses more battery")
+        //              }
+        //              .font(.caption)
+        //              .foregroundColor(.orange)
+        //
+        //              if settings.hasLiDAR {
+        //                Text(
+        //                  "LiDAR is available on this device. Default mode is recommended for most use cases."
+        //                )
+        //                .font(.caption2)
+        //                .foregroundColor(.secondary)
+        //              } else {
+        //                Text("AR mode provides better distance estimation on devices without LiDAR.")
+        //                  .font(.caption2)
+        //                  .foregroundColor(.secondary)
+        //              }
+        //            }
+        //            .padding(.top, 4)
+        //          }
+        //        }
         // MARK: - Advanced Settings (Developer Mode)
         if settings.developerMode {
           Section(header: Text("Detection Settings")) {

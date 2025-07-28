@@ -91,7 +91,7 @@ final class NavAnnouncer {
     }
 
     // Speak and record.
-    speaker.speak(phrase, rate: 0.5)  // default rate; caller may override
+    speaker.speak(phrase)
     cache.lastByCandidate[candidate.id] = (phrase, now)
     cache.lastGlobal = (phrase, now)
   }
