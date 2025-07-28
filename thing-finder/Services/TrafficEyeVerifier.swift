@@ -97,7 +97,7 @@ public final class TrafficEyeVerifier: ImageVerifier {
       .catch { _ in Just(RecognitionResult(mmr: nil, plate: nil)).setFailureType(to: Error.self) }
       .flatMap { result -> AnyPublisher<VerificationOutcome, Error> in
         // --- License plate early verification ---
-        if let expectedPlate = self.config.expectedPlate,
+        /*if let expectedPlate = self.config.expectedPlate,
           let detectedPlate = result.plate
         {
           let expectedNorm = expectedPlate.replacingOccurrences(of: " ", with: "").uppercased()
@@ -123,7 +123,7 @@ public final class TrafficEyeVerifier: ImageVerifier {
             return Just(outcome).setFailureType(to: Error.self).eraseToAnyPublisher()
           }
           // Low confidence or length mismatch – proceed to LLM
-        }
+        } */
 
         guard let mmr = result.mmr else {
           // No vehicle detection at all

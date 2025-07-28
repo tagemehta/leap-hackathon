@@ -8,7 +8,7 @@ class Speaker: SpeechOutput {
   }
   public func speak(_ text: String) {
     if synthesizer.isSpeaking {
-      synthesizer.stopSpeaking(at: .immediate)  // Interrupt immediately
+      synthesizer.stopSpeaking(at: .word)  // Interrupt immediately
     }
 
     // Create an utterance with the text

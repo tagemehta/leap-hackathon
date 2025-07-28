@@ -45,7 +45,7 @@ final class DriftRepairService: DriftRepairServiceProtocol {
   init(
     imageUtils: ImageUtilities = ImageUtilities(),
     repairStride: Int = 15,
-    simThreshold: Float = 0.901
+    simThreshold: Float = 0.90
   ) {
     self.imageUtils = imageUtils
     self.repairStride = repairStride
@@ -141,16 +141,21 @@ final class DriftRepairService: DriftRepairServiceProtocol {
         }
       }
       // Combine similarity with center-distance penalty
-      let candCenter = CGPoint(x: candidate.lastBoundingBox.midX, y: candidate.lastBoundingBox.midY)
+      /*let candCenter = CGPoint(x: candidate.lastBoundingBox.midX, y: candidate.lastBoundingBox.midY)
       let detCenter = CGPoint(x: det.boundingBox.midX, y: det.boundingBox.midY)
       let dx = candCenter.x - detCenter.x
       let dy = candCenter.y - detCenter.y
       let centerDist = sqrt(dx * dx + dy * dy)
-      let maxDist: CGFloat = 0.15  // ~15 % of normalized space
-      guard centerDist <= maxDist else { continue }
+      let maxDist: CGFloat = 0.40  // ~40 % of normalized space
+      */
+      // Embedding and center thresholds both individually have to be passed
+      // Score then combines to find best match
+      // Temporarily getting rid of center threshold
+      // because it introduces noise for semi-quick movements
+    
 
       let score = sim
-      if score > simThreshold && score > bestScore {
+      if sim > simThreshold && score > bestScore {
         bestScore = score
         best = det
       }

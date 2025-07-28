@@ -24,6 +24,11 @@ public struct VerificationConfig {
   /// Time after which partial/full candidates should be re-verified (seconds).
   public var reverifyInterval: TimeInterval
 
+  /// Maximum Levenshtein edit distance considered a MATCH (full).
+  public var maxEditsForMatch: Int
+  /// Maximum edit distance that still allows us to CONTINUE (partial). Anything higher is rejected.
+  public var maxEditsForContinue: Int
+
   /// Whether we should run OCR for this verification cycle.
   public var shouldRunOCR: Bool
 
@@ -38,7 +43,9 @@ public struct VerificationConfig {
     maxOCRRetries: Int = 30,
     cooldownAfterRejectSecs: TimeInterval = 10,
     shouldRunOCR: Bool = false,
-    reverifyInterval: TimeInterval = 10
+    reverifyInterval: TimeInterval = 10,
+    maxEditsForMatch: Int = 1,
+    maxEditsForContinue: Int = 2
   ) {
     self.cooldownAfterRejectSecs = cooldownAfterRejectSecs
     self.expectedPlate = expectedPlate?.uppercased()
@@ -47,5 +54,7 @@ public struct VerificationConfig {
     self.maxOCRRetries = maxOCRRetries
     self.shouldRunOCR = shouldRunOCR
     self.reverifyInterval = reverifyInterval
+    self.maxEditsForMatch = maxEditsForMatch
+    self.maxEditsForContinue = maxEditsForContinue
   }
 }

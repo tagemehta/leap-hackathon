@@ -36,15 +36,23 @@ extension VerifierService {
           self.verificationConfig.regex.firstMatch(
             in: recognized!, options: [],
             range: NSRange(location: 0, length: recognized!.count)) != nil
-        let plateMatch =
-          self.verificationConfig.expectedPlate == nil
-          || recognized == self.verificationConfig.expectedPlate
-        if conf >= self.verificationConfig.ocrConfidenceMin && regexOK && plateMatch {
-          nextStatus = .full
+        let expected = self.verificationConfig.expectedPlate
+        var editDist: Int?
+        if let expected = expected {
+          editDist = recognized!.levenshteinDistance(to: expected)
         }
-//        else if regexOK && !plateMatch {
-//          nextStatus = .rejected
-//        }
+
+        if conf >= self.verificationConfig.ocrConfidenceMin && regexOK {
+          if let d = editDist {
+            if d <= self.verificationConfig.maxEditsForMatch {
+              nextStatus = .full
+            } else if d <= self.verificationConfig.maxEditsForContinue {
+              nextStatus = .partial  // keep trying
+            } else {
+              nextStatus = .rejected
+            }
+          }
+        }
       }
 
       // Update candidate on main queue
@@ -63,4 +71,3 @@ extension VerifierService {
     }
   }
 }
-
