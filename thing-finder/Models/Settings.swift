@@ -12,7 +12,7 @@ enum Direction: String {
 
 /// Settings model that stores user preferences for the navigation experience.
 /// Uses @AppStorage for persistence and provides defaults matching the original implementation.
-class Settings: ObservableObject {
+public class Settings: ObservableObject {
   // MARK: - Navigation Settings
 
   /// Minimum interval between beeps when target is centered (seconds)
@@ -184,6 +184,7 @@ extension Settings {
     directionRightThreshold = 0.66
     speechRepeatInterval = 4.0
     speechChangeInterval = 2.0
+    allowPartialNavigation = true
 
     // Distance Feedback Settings
     distanceMin = 0.2

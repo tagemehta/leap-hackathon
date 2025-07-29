@@ -56,17 +56,15 @@ extension VerifierService {
       }
 
       // Update candidate on main queue
-      DispatchQueue.main.async {
-        store.update(id: candidate.id) { cand in
-          cand.ocrAttempts += 1
-          cand.ocrText = recognized
-          if nextStatus == .partial && cand.ocrAttempts >= self.verificationConfig.maxOCRRetries {
-            cand.matchStatus = .rejected
-          } else {
-            cand.matchStatus = nextStatus
-          }
-        }
-
+      store.update(id: candidate.id) { cand in
+        cand.ocrAttempts += 1
+        cand.ocrText = recognized
+        // if nextStatus == .partial && cand.ocrAttempts >= self.verificationConfig.maxOCRRetries {
+        //   cand.matchStatus = .rejected
+        // } else {
+        //   cand.matchStatus = nextStatus
+        // } These are not necessary anymore because of levenshtein distance check
+        cand.matchStatus = nextStatus
       }
     }
   }

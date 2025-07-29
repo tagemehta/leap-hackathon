@@ -38,6 +38,7 @@ public final class FramePipelineCoordinator: ObservableObject {
 
   private let targetClasses: [String]
   private let targetDescription: String
+  private let settings: Settings
   // MARK: Publishers
   @Published public private(set) var presentation: FramePresentation?
 
@@ -51,7 +52,8 @@ public final class FramePipelineCoordinator: ObservableObject {
     store: CandidateStore = CandidateStore(),
     lifecycle: CandidateLifecycleServiceProtocol,
     targetClasses: [String],
-    targetDescription: String
+    targetDescription: String,
+    settings: Settings
   ) {
     self.detector = detector
     self.tracker = tracker
@@ -62,7 +64,7 @@ public final class FramePipelineCoordinator: ObservableObject {
     self.lifecycle = lifecycle
     self.targetClasses = targetClasses
     self.targetDescription = targetDescription
-
+    self.settings = settings
   }
 
   // MARK: Per-frame entry point
@@ -125,7 +127,7 @@ public final class FramePipelineCoordinator: ObservableObject {
       // Prefer a partial match if any of the verifying IDs are currently partial
       if let partial = snapshot.values.first(where: {
         ids.contains($0.id) && $0.matchStatus == .partial
-      }) {
+      }), settings.allowPartialNavigation {
         targetBBox = partial.lastBoundingBox
       }
     default:

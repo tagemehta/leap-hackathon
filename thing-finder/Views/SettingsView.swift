@@ -8,7 +8,7 @@ struct SettingsView: View {
       List {
         // MARK: - Navigation Feedback
         Section(header: Text("Navigation Feedback")) {
-          Toggle("Navigate on Partial", isOn: $settings.allowPartialNavigation)
+          Toggle("Navigate without plate match", isOn: $settings.allowPartialNavigation)
           //          Toggle("Audio Beeps", isOn: $settings.enableAudio)
           //          Toggle("Speech Guidance", isOn: $settings.enableSpeech)
           //          Toggle("Haptic Feedback", isOn: $settings.enableHaptics)
@@ -66,8 +66,15 @@ struct SettingsView: View {
             Slider(value: $settings.smoothingAlpha, in: 0.05...0.5, step: 0.05)
               .accessibilityLabel("Beep Smoothing")
           }
+
+          Picker("Volume Curve", selection: $settings.volumeCurve) {
+            ForEach(VolumeCurve.allCases) { curve in
+              Text(curve.rawValue).tag(curve)
+            }
+          }
         }
 
+        /*
         // MARK: - Distance Settings
         Section(header: Text("Distance Feedback")) {
           Picker("Volume Curve", selection: $settings.volumeCurve) {
@@ -93,7 +100,7 @@ struct SettingsView: View {
             Slider(value: $settings.volumeMin, in: 0.0...0.5, step: 0.05)
               .accessibilityLabel("Minimum Volume")
           }
-        }
+        } */
 
         // MARK: - Camera Settings
         //        Section(header: Text("Camera Mode")) {

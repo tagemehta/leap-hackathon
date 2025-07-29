@@ -64,7 +64,8 @@ public final class AppContainer {
       nav: nav,
       lifecycle: lifecycle,
       targetClasses: classes,
-      targetDescription: description
+      targetDescription: description,
+      settings: settings
     )
   }
 }

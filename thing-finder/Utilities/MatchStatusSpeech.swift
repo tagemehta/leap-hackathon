@@ -17,7 +17,7 @@ enum MatchStatusSpeech {
       return "Waiting for verification"
     case .partial:
       if let desc = detectedDescription {
-        return "Navigating to \(desc). Warning: Plate not visible yet"
+        return "Found \(desc). Warning: Plate not visible yet"
       }
       return "Plate not visible yet"
     case .full:
