@@ -48,6 +48,8 @@ public struct Candidate: Identifiable, Equatable {
   public var ocrAttempts: Int = 0
   /// Last recognised text (if any) for debugging / speech.
   public var ocrText: String?
+    
+    public var degrees: Double = -1.0
   
   /// Convenience – true when verifier has fully approved this candidate.
   public var isMatched: Bool { matchStatus == .full }
@@ -82,4 +84,5 @@ public enum MatchStatus: String, Codable {
   case partial   // API matched, plate not confirmed
   case full      // API + plate confirmed
   case rejected  // negative result (wrong plate / retry exhausted)
+    case lost // if the car was a full match then was lost it is stored as lost until new match
 }

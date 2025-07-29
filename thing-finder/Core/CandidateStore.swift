@@ -109,6 +109,8 @@ public final class CandidateStore: ObservableObject {
   ) -> Bool {
     for cand in candidates.values {
       // Check IoU overlap first (fast)
+        if cand.matchStatus == .lost
+        {continue}
       if cand.lastBoundingBox.iou(with: bbox) > iouThreshold {
         return true
       }

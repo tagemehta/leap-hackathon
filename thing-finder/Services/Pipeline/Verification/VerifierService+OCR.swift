@@ -64,6 +64,15 @@ extension VerifierService {
         // } else {
         //   cand.matchStatus = nextStatus
         // } These are not necessary anymore because of levenshtein distance check
+        
+        //if nextStatus is a .full, remove any .lost in store
+          if nextStatus == .full{
+              for (id, candidate) in store.candidates{
+                  if candidate.matchStatus == .lost{
+                      store.remove(id: id)
+                  }
+              }
+          }
         cand.matchStatus = nextStatus
       }
     }

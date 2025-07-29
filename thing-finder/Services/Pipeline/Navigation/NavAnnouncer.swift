@@ -55,7 +55,9 @@ final class NavAnnouncer {
         for: candidate.matchStatus,
         recognisedText: candidate.ocrText,
         detectedDescription: candidate.detectedDescription,
-        rejectReason: candidate.rejectReason)
+        rejectReason: candidate.rejectReason,
+        lastDirection: candidate.degrees
+      )
     else { return }
 
     // Waiting-specific global guard.
@@ -69,8 +71,8 @@ final class NavAnnouncer {
       break
     }
 
-    // Skip if status unchanged for candidate.
-    if lastStatus[candidate.id] == candidate.matchStatus {
+    // Skip if status unchanged for candidate or its a lost candidate.
+      if lastStatus[candidate.id] == candidate.matchStatus && candidate.matchStatus != .lost {
       return
     }
     lastStatus[candidate.id] = candidate.matchStatus
