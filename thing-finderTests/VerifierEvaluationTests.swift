@@ -136,7 +136,6 @@ final class VerifierEvaluationTests: XCTestCase {
 
     let exp = expectation(description: "eval")
 
-    var oldM: Metrics?
     var newM: Metrics?
     var bag = Set<AnyCancellable>()
 

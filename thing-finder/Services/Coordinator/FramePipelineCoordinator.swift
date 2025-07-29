@@ -36,6 +36,8 @@ public final class FramePipelineCoordinator: ObservableObject {
   private let stateMachine: DetectionStateMachine = DetectionStateMachine()
   private let lifecycle: CandidateLifecycleServiceProtocol
 
+  private let imgUtils: ImageUtilities = ImageUtilities.shared
+
   private let targetClasses: [String]
   private let targetDescription: String
   private let settings: Settings
@@ -141,15 +143,21 @@ public final class FramePipelineCoordinator: ObservableObject {
       switch captureType {
       case .avFoundation, .videoFile:
         // Convert view-rect back to normalized image rect for AVF buffers
-        let normalized = VNNormalizedRectForImageRect(
-          box, Int(imageSize.width), Int(imageSize.height))
-        center = CGPoint(x: normalized.midX, y: normalized.midY)
+        let (imageRect, _) = imgUtils.unscaledBoundingBoxes(
+          for: box,
+          imageSize: imageSize,
+          viewSize: imageSize,
+          orientation: orientation)
+        let normImageRect = VNNormalizedRectForImageRect(
+          imageRect, Int(imageSize.width), Int(imageSize.height))
+        center = CGPoint(x: normImageRect.midX, y: normImageRect.midY)
       case .arKit:
         center = CGPoint(x: box.midX, y: box.midY)
       }
       if let d = depthAt(center) {
         targetDistance = Double(d)
       }
+      print("Target distance: \(targetDistance ?? 0)")
     }
 
     // 7.5 Navigation tick

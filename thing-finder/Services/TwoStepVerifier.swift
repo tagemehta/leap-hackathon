@@ -106,9 +106,6 @@ public final class TwoStepVerifier: ImageVerifier {
 
     return URLSession.shared.dataTaskPublisher(for: req1)
       .handleEvents(receiveOutput: { output in
-        if let txt = String(data: output.data, encoding: .utf8) {
-          //          print("[TwoStepVerifier] step1 RAW:\n\(txt)")
-        }
       })
       .tryMap { return $0.data }
       .decode(type: ChatCompletionResponse.self, decoder: decoder)
@@ -161,15 +158,9 @@ public final class TwoStepVerifier: ImageVerifier {
 
         return URLSession.shared.dataTaskPublisher(for: req2)
           .handleEvents(receiveOutput: { output in
-            if let txt = String(data: output.data, encoding: .utf8) {
-              //              print("[TwoStepVerifier] step2 RAW:\n\(txt)")
-            }
           })
           .tryMap { pair -> Data in
             let data = pair.data
-            if let txt = String(data: data, encoding: .utf8) {
-              //              print("[TwoStepVerifier] step2 RAW:\n", txt)
-            }
             return data
           }
           .decode(type: ChatCompletionResponse.self, decoder: self.decoder)

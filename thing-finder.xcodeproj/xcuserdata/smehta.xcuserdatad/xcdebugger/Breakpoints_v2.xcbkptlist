@@ -254,8 +254,8 @@
             filePath = "thing-finder/Services/TwoStepVerifier.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "176"
-            endingLineNumber = "176"
+            startingLineNumber = "167"
+            endingLineNumber = "167"
             landmarkName = "verify(image:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -270,8 +270,8 @@
             filePath = "thing-finder/Services/TwoStepVerifier.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "115"
-            endingLineNumber = "115"
+            startingLineNumber = "112"
+            endingLineNumber = "112"
             landmarkName = "verify(image:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -456,7 +456,7 @@
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
             uuid = "10E9E68C-31F5-44B2-8861-67B5CA76AF31"
-            shouldBeEnabled = "Yes"
+            shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "thing-finder/Services/Pipeline/Verification/VerifierService.swift"
