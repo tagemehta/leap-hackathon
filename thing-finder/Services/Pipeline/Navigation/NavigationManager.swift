@@ -12,12 +12,12 @@ final class FrameNavigationManager: NavigationSpeaker {
   init(
     settings: Settings,
     speaker: SpeechOutput,
-    beeper: Beeper? = nil,
-    config: NavigationFeedbackConfig = NavigationFeedbackConfig()
+    beeper: Beeper? = nil
   ) {
     // Shared cache across controllers to coordinate phrase throttling.
     let cache = AnnouncementCache()
     self.settings = settings
+    let config = NavigationFeedbackConfig(speechRepeatInterval: settings.speechRepeatInterval, directionChangeInterval: settings.speechChangeInterval, waitingPhraseCooldown: settings.waitingPhraseCooldown)
     self.announcer = NavAnnouncer(
       cache: cache, config: config, speaker: speaker, settings: settings)
     self.dirController = DirectionSpeechController(

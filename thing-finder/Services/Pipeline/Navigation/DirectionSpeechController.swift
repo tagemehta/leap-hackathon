@@ -17,7 +17,7 @@ final class DirectionSpeechController {
 
   /// Pass `nil` when there is no active target against which to provide direction.
   func tick(targetBox: CGRect?, distance: Double?, timestamp: Date) {
-    guard let box = targetBox else { return }
+    guard let box = targetBox, settings.enableSpeech else { return }
     let newDir = settings.getDirection(normalizedX: box.midX)
     let elapsed = timestamp.timeIntervalSince(timeLastSpoken)
 

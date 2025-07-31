@@ -36,6 +36,9 @@ final class NavAnnouncer {
   /// Called once per frame with the latest candidate snapshot.
   func tick(candidates: [Candidate], timestamp: Date) {
     // Clutter suppression: prefer full matches, else partial, else everything.
+    guard settings.enableSpeech else {
+      return
+    }
     let full = candidates.filter { $0.matchStatus == .full }
     let partial = candidates.filter { $0.matchStatus == .partial }
 
@@ -44,8 +47,10 @@ final class NavAnnouncer {
       active = full
     } else if !partial.isEmpty {
       active = partial
-    } else {
+    } else if settings.announceRejected {
       active = candidates
+    } else {
+      return
     }
 
     for candidate in active {
@@ -89,7 +94,8 @@ final class NavAnnouncer {
     guard
       let phrase = MatchStatusSpeech.phrase(
         for: candidate.matchStatus, recognisedText: candidate.ocrText,
-        detectedDescription: candidate.detectedDescription, rejectReason: candidate.rejectReason, normalizedXPosition: candidate.lastBoundingBox.midX, settings: settings)
+        detectedDescription: candidate.detectedDescription, rejectReason: candidate.rejectReason,
+        normalizedXPosition: candidate.lastBoundingBox.midX, settings: settings)
     else { return }
 
     // Waiting-specific global guard.
