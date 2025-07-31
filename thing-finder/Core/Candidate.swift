@@ -39,23 +39,23 @@ public struct Candidate: Identifiable, Equatable {
   public var matchStatus: MatchStatus = .unknown
   /// Timestamp of the most recent *successful* LLM verification (partial or full).
   public var lastVerified: Date?
-  
+
   /// Human-readable description returned by LLM, e.g. “blue Toyota Camry”.
   public var detectedDescription: String?
   /// Reason for rejection when matchStatus == .rejected.
-  public var rejectReason: String?
+  public var rejectReason: RejectReason?
   /// Number of OCR attempts executed so far (licence-plate verification).
   public var ocrAttempts: Int = 0
   /// Last recognised text (if any) for debugging / speech.
   public var ocrText: String?
-  
+
   /// Convenience – true when verifier has fully approved this candidate.
   public var isMatched: Bool { matchStatus == .full }
 
   // MARK: Lifetime bookkeeping
   public var createdAt: Date = Date()
   public var lastUpdated: Date = Date()
-  
+
   /// Consecutive frames where this candidate had **no** supporting detection.
   public var missCount: Int = 0
 
@@ -77,9 +77,55 @@ public struct Candidate: Identifiable, Equatable {
 
 /// LLM verification result for a candidate.
 public enum MatchStatus: String, Codable {
-  case unknown   // detector output, API not called yet
-  case waiting   // API verification in-flight
-  case partial   // API matched, plate not confirmed
-  case full      // API + plate confirmed
+  case unknown  // detector output, API not called yet
+  case waiting  // API verification in-flight
+  case partial  // API matched, plate not confirmed
+  case full  // API + plate confirmed
   case rejected  // negative result (wrong plate / retry exhausted)
+}
+
+/// Specific reason for rejection or retry of a candidate.
+public enum RejectReason: String, Codable {
+  // Retryable reasons (will set candidate to .unknown)
+  case unclearImage = "unclear_image"
+  case lowConfidence = "low_confidence"
+  case insufficientInfo = "insufficient_info"
+  case apiError = "api_error"
+  case ambiguous = "ambiguous"
+  case licensePlateNotVisible = "license_plate_not_visible"
+
+  // Hard reject reasons (will set candidate to .rejected)
+  case wrongModelOrColor = "wrong_model_or_color"
+  case licensePlateMismatch = "license_plate_mismatch"
+  case wrongObjectClass = "wrong_object_class"
+
+  // Success case
+  case success = "success"
+
+  /// Whether this reason should trigger a retry rather than a hard rejection
+  public var isRetryable: Bool {
+    switch self {
+    case .unclearImage, .lowConfidence, .insufficientInfo, .apiError, .ambiguous,
+      .licensePlateNotVisible:
+      return true
+    default:
+      return false
+    }
+  }
+
+  /// User-friendly description for announcements
+  public var userFriendlyDescription: String {
+    switch self {
+    case .unclearImage: return "Picture too blurry"
+    case .lowConfidence: return "Not confident enough"
+    case .insufficientInfo: return "Need a better view"
+    case .apiError: return "Detection error"
+    case .ambiguous: return "Ambiguous result"
+    case .licensePlateNotVisible: return "License plate not visible"
+    case .wrongModelOrColor: return "Wrong make or model"
+    case .licensePlateMismatch: return "License plate doesn't match"
+    case .wrongObjectClass: return "Not a vehicle"
+    case .success: return ""
+    }
+  }
 }

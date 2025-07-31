@@ -13,18 +13,24 @@ final class NavAnnouncer {
   private let cache: AnnouncementCache
   private let config: NavigationFeedbackConfig
   private let speaker: SpeechOutput
+  private let settings: Settings
 
   // Track last seen status per candidate so we only announce transitions.
   private var lastStatus: [UUID: MatchStatus] = [:]
 
+  // Track last announced retry reason per candidate to avoid repetition
+  private var lastRetryReasonSpoken: [UUID: RejectReason] = [:]
+
   init(
     cache: AnnouncementCache,
     config: NavigationFeedbackConfig,
-    speaker: SpeechOutput
+    speaker: SpeechOutput,
+    settings: Settings
   ) {
     self.cache = cache
     self.config = config
     self.speaker = speaker
+    self.settings = settings
   }
 
   /// Called once per frame with the latest candidate snapshot.
@@ -49,13 +55,41 @@ final class NavAnnouncer {
 
   // MARK: – Internal helpers
   private func handleCandidate(_ candidate: Candidate, now: Date) {
-    // Build phrase.
+    // Check for retry announcements first
+    if candidate.matchStatus == .unknown,
+      let reason = candidate.rejectReason,
+      reason.isRetryable,
+      lastRetryReasonSpoken[candidate.id] != reason
+    {
+
+      // Create retry phrase
+      let retryPhrase: String
+      switch reason {
+      case .unclearImage: retryPhrase = "Picture too blurry, trying again"
+      case .insufficientInfo: retryPhrase = "Need a better view, retrying"
+      case .lowConfidence: retryPhrase = "Not sure yet, taking another shot"
+      case .apiError: retryPhrase = "Detection error, retrying"
+      case .licensePlateNotVisible: retryPhrase = "Can't see the plate, retrying"
+      case .ambiguous: retryPhrase = "Results unclear, retrying"
+      default: return  // No speech for non-retryable reasons
+      }
+
+      // Speak and record
+      speaker.speak(retryPhrase)
+      lastRetryReasonSpoken[candidate.id] = reason
+      return  // Skip normal status phrase this frame
+    }
+
+    // Reset retry tracking when candidate is matched or hard rejected
+    if candidate.isMatched || candidate.matchStatus == .rejected {
+      lastRetryReasonSpoken[candidate.id] = nil
+    }
+
+    // Build regular status phrase
     guard
       let phrase = MatchStatusSpeech.phrase(
-        for: candidate.matchStatus,
-        recognisedText: candidate.ocrText,
-        detectedDescription: candidate.detectedDescription,
-        rejectReason: candidate.rejectReason)
+        for: candidate.matchStatus, recognisedText: candidate.ocrText,
+        detectedDescription: candidate.detectedDescription, rejectReason: candidate.rejectReason, normalizedXPosition: candidate.lastBoundingBox.midX, settings: settings)
     else { return }
 
     // Waiting-specific global guard.

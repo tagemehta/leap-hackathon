@@ -129,7 +129,7 @@ public final class TwoStepVerifier: ImageVerifier {
         guard sim >= self.similarityThreshold else {
           return Just(
             VerificationOutcome(
-              isMatch: false, description: "\(info.make) \(info.model)", rejectReason: "ambiguous")
+              isMatch: false, description: "\(info.make) \(info.model)", rejectReason: .ambiguous)
           )
           .setFailureType(to: Error.self).eraseToAnyPublisher()
         }
@@ -170,17 +170,17 @@ public final class TwoStepVerifier: ImageVerifier {
               let data = argStr.data(using: .utf8)
             else {
               return VerificationOutcome(
-                isMatch: false, description: "\(info.make) \(info.model)", rejectReason: "ambiguous"
+                isMatch: false, description: "\(info.make) \(info.model)", rejectReason: .ambiguous
               )
             }
             print("2")
             let m = try self.decoder.decode(MatchResult.self, from: data)
             if m.match && m.confidence < self.confidenceThreshold {
               return VerificationOutcome(
-                isMatch: false, description: m.description!, rejectReason: "low_confidence")
+                isMatch: false, description: m.description!, rejectReason: .lowConfidence)
             }
             return VerificationOutcome(
-              isMatch: m.match, description: m.description!, rejectReason: m.match ? nil : m.reason)
+              isMatch: m.match, description: m.description!, rejectReason: m.reason == nil ? nil : RejectReason(rawValue: m.reason!))
           }
           .eraseToAnyPublisher()
       }

@@ -138,7 +138,7 @@ public final class VerifierService: VerifierServiceProtocol {
             // If we failed to decode JSON or the network dropped, mark candidate uncertain so we will retry.
             store.update(id: cand.id) {
               $0.matchStatus = .unknown
-              $0.rejectReason = "ambiguous"
+              $0.rejectReason = .ambiguous
             }
           }
         } receiveValue: { outcome in
@@ -166,15 +166,19 @@ public final class VerifierService: VerifierServiceProtocol {
               store: store)
           } else {
             store.update(id: cand.id) {
-              if outcome.rejectReason == "unclear_image" || outcome.rejectReason == "low_confidence"
-                || outcome.rejectReason == "ambiguous" || outcome.rejectReason == "api_error"
-              {
-                // Image too blurry / unclear – keep searching so candidate will be retried
+              // Convert string rejectReason to enum
+              let reason = outcome.rejectReason
+              
+              // Check if the reason is retryable
+              if let reason = reason, reason.isRetryable {
+                // Retryable reason - keep searching so candidate will be retried
                 $0.matchStatus = .unknown
-              } else {
+              } else if reason != nil {
+                // Hard reject reason
                 $0.matchStatus = .rejected
               }
-              $0.rejectReason = outcome.rejectReason
+              
+              $0.rejectReason = reason
               $0.detectedDescription = outcome.description
             }
           }

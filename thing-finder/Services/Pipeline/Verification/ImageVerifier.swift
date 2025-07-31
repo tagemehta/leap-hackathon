@@ -16,9 +16,9 @@ import UIKit
 public struct VerificationOutcome {
   public let isMatch: Bool
   public let description: String
-  public let rejectReason: String?
+  public let rejectReason: RejectReason?
   public let isPlateMatch: Bool
-  public init(isMatch: Bool, description: String, rejectReason: String?, isPlateMatch: Bool = false)
+  public init(isMatch: Bool, description: String, rejectReason: RejectReason?, isPlateMatch: Bool = false)
   {
     self.isMatch = isMatch
     self.description = description

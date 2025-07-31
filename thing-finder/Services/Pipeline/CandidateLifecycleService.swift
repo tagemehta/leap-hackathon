@@ -68,7 +68,7 @@ public final class CandidateLifecycleService: CandidateLifecycleServiceProtocol 
   private let rejectCooldown: TimeInterval
 
   public init(imgUtils: ImageUtilities = .shared,
-              missThreshold: Int = 5,
+              missThreshold: Int = 15,
               rejectCooldown: TimeInterval = 10) {
     self.imgUtils = imgUtils
     self.missThreshold = missThreshold
