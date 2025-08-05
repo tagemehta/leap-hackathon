@@ -39,7 +39,9 @@ import UIKit
 import Vision
 
 public final class VerifierService: VerifierServiceProtocol {
-  private let verifier: ImageVerifier
+  /// When using combined strategy we build verifiers on-the-fly; otherwise we keep one.
+  private let defaultVerifier: ImageVerifier
+
   internal let imgUtils: ImageUtilities
   internal let verificationConfig: VerificationConfig
   internal let ocrEngine: OCREngine
@@ -47,13 +49,13 @@ public final class VerifierService: VerifierServiceProtocol {
   /// Timestamp of the most recent *batch* of verify() requests (i.e., the last tick that sent one or more verify calls).
   private var lastVerifyBatch: Date = .distantPast
   /// Minimum interval between successive batches of verify() requests.
-  private let minVerifyInterval: TimeInterval = 3  // seconds
+  private let minVerifyInterval: TimeInterval = 1  // seconds
 
   init(
     verifier: ImageVerifier, imgUtils: ImageUtilities, config: VerificationConfig,
     ocrEngine: OCREngine = VisionOCREngine()
   ) {
-    self.verifier = verifier
+    self.defaultVerifier = verifier
     self.imgUtils = imgUtils
     self.verificationConfig = config
     self.ocrEngine = ocrEngine
@@ -81,7 +83,7 @@ public final class VerifierService: VerifierServiceProtocol {
     // Split candidates into ones we can auto-match (no text description) and ones needing verification.
     var toVerify: [Candidate] = []
     toVerify.append(contentsOf: staleVerified)
-    if verifier.targetTextDescription.isEmpty {
+    if defaultVerifier.targetTextDescription.isEmpty {
       for cand in pendingUnknown {
         store.update(id: cand.id) { $0.matchStatus = .full }
       }
@@ -116,6 +118,37 @@ public final class VerifierService: VerifierServiceProtocol {
 
     lastVerifyBatch = now
     for cand in toVerify {
+      // ---------------- Per-candidate throttling ----------------
+      print(
+        "[Verifier] Considering candidate \(cand.id); bestView=\(cand.view); lastMMR=\(cand.lastMMRTime.timeIntervalSince1970)"
+      )
+
+      // Skip verification if the candidate's bounding box covers less than 15% of the frame.
+      // `lastBoundingBox` is already normalised to [0,1] coordinates so width*height gives
+      // the fraction of image area occupied.
+      let bboxArea = cand.lastBoundingBox.width * cand.lastBoundingBox.height
+      let minAreaThreshold: CGFloat = 0.10  // 10% of the image
+      if bboxArea < minAreaThreshold {
+        print("[Verifier] Candidate \(cand.id) skipped – bbox too small (\(bboxArea * 100)%)")
+        continue
+      }
+
+      // Skip verification if bounding box is significantly taller than it is wide.
+      // Allow roughly square boxes (front/rear views) but reject tall portrait shapes.
+      let aspectRatio = cand.lastBoundingBox.height / max(cand.lastBoundingBox.width, 0.0001)
+      let maxTallness: CGFloat = 2  // height cannot exceed 200% of width
+      if aspectRatio > maxTallness {
+        print("[Verifier] Candidate \(cand.id) skipped – bbox too tall (h/w=\(aspectRatio))")
+        continue
+      }
+
+      if cand.view != .side
+        && now.timeIntervalSince(cand.lastMMRTime) < verificationConfig.perCandidateMMRInterval
+      {
+        // Skip TrafficEye re-verify until per-candidate interval passes.
+        print("[Verifier] Candidate \(cand.id) skipped – MMR throttled")
+        continue
+      }
 
       // Convert normalized box → pixel rect using ImageUtilities
       let (imageRect, _) = imgUtils.unscaledBoundingBoxes(
@@ -131,17 +164,52 @@ public final class VerifierService: VerifierServiceProtocol {
       if cand.matchStatus == .unknown {
         store.update(id: cand.id) { $0.matchStatus = .waiting }
       }
-      verifier.verify(image: img)
-        .sink { completion in
-          if case .failure(let err) = completion {
-            print("LLM verify error: \(err)")
-            // If we failed to decode JSON or the network dropped, mark candidate uncertain so we will retry.
+      // Choose verifier per candidate based on config & policy, with optional override
+      let chosenKind: VerifierKind
+      let chosenVerifier: ImageVerifier
+      if self.verificationConfig.useCombinedVerifier {
+        switch VerificationPolicy.nextKind(for: cand) {
+        case .trafficEye:
+          chosenKind = .trafficEye
+          chosenVerifier = TrafficEyeVerifier(
+            targetTextDescription: self.defaultVerifier.targetTextDescription,
+            config: self.verificationConfig)
+        case .llm:
+          chosenKind = .llm
+          chosenVerifier = TwoStepVerifier(
+            targetTextDescription: self.defaultVerifier.targetTextDescription)
+        }
+      } else {
+        chosenKind = .trafficEye
+        chosenVerifier = self.defaultVerifier
+      }
+      let verifyStartTime = Date()
+      chosenVerifier.verify(image: img)
+        .replaceError(
+          with: VerificationOutcome(isMatch: false, description: "", rejectReason: .apiError)
+        )
+        .sink { outcome in
+          // -------- Post-verification bookkeeping --------
+          // Update best view & timing
+          let latency = Date().timeIntervalSince(verifyStartTime)
+          print(
+            "[Verifier] Result for candidate \(cand.id): kind=\(chosenKind) match=\(outcome.isMatch) view=\(String(describing: outcome.vehicleView)) score=\(String(describing: outcome.viewScore)) reason=\(String(describing: outcome.rejectReason?.rawValue)) latency=\(String(format: "%.3f", latency))s"
+          )
+          store.update(id: cand.id) { c in
+            if let v = outcome.vehicleView, let score = outcome.viewScore {
+              c.updateView(v, score: score)
+            }
+            if chosenKind == .trafficEye { c.lastMMRTime = now }
+          }
+
+          if !outcome.isMatch {
             store.update(id: cand.id) {
-              $0.matchStatus = .unknown
-              $0.rejectReason = .ambiguous
+              switch chosenKind {
+              case .trafficEye: $0.verificationTracker.trafficAttempts += 1
+              case .llm: $0.verificationTracker.llmAttempts += 1
+              }
             }
           }
-        } receiveValue: { outcome in
 
           if outcome.isMatch {
             store.update(id: cand.id) {
@@ -168,7 +236,7 @@ public final class VerifierService: VerifierServiceProtocol {
             store.update(id: cand.id) {
               // Convert string rejectReason to enum
               let reason = outcome.rejectReason
-              
+
               // Check if the reason is retryable
               if let reason = reason, reason.isRetryable {
                 // Retryable reason - keep searching so candidate will be retried
@@ -177,7 +245,7 @@ public final class VerifierService: VerifierServiceProtocol {
                 // Hard reject reason
                 $0.matchStatus = .rejected
               }
-              
+
               $0.rejectReason = reason
               $0.detectedDescription = outcome.description
             }

@@ -45,13 +45,13 @@ private struct MMR: Codable {
   let make: MMRItem?
   let model: MMRItem?
   let color: MMRItem?
+  let view: MMRItem?
 }
 
 private struct MMRItem: Codable {
   let value: String
   let score: Double
 }
-
 // MARK: - TrafficEye Verifier
 
 public final class TrafficEyeVerifier: ImageVerifier {
@@ -106,8 +106,21 @@ public final class TrafficEyeVerifier: ImageVerifier {
 
           if detectedNorm == expectedNorm {
             // Perfect match – success
+            let vehicleView: Candidate.VehicleView = {
+              switch result.mmr?.view?.value.lowercased() {
+              case "frontal": return .front
+              case "rear", "back": return .rear
+              case "side": return .side
+              default: return .unknown
+              }
+            }()
             let outcome = VerificationOutcome(
-              isMatch: true, description: detectedPlate.text.value, rejectReason: .success)
+              isMatch: true,
+              description: detectedPlate.text.value,
+              rejectReason: .success,
+              isPlateMatch: true,
+              vehicleView: vehicleView,
+              viewScore: result.mmr?.view?.score)
             return Just(outcome).setFailureType(to: Error.self).eraseToAnyPublisher()
           } else if (detectedPlate.text.score ?? 0) >= 0.9
             && detectedNorm.count == expectedNorm.count
@@ -139,16 +152,20 @@ public final class TrafficEyeVerifier: ImageVerifier {
           let colorScore = mmr.color?.score ?? 0
           return 0.5 * makeScore + 0.3 * modelScore + 0.2 * colorScore
         }()
-        print(mmr)
-        print(infoQ)
         if infoQ < 0.4 {
-          let outcome = VerificationOutcome(
-            isMatch: false,
-            description: "insufficient info – low confidence detection",
-            rejectReason: .insufficientInfo)
-          return Just(outcome).setFailureType(to: Error.self).eraseToAnyPublisher()
+          return Just(
+            VerificationOutcome(
+              isMatch: false, description: "Insufficient information",
+              rejectReason: .insufficientInfo
+              
+            )
+          )
+          .setFailureType(to: Error.self)
+          .eraseToAnyPublisher()
         }
-        // Defer to LLM for make/model/color comparison on medium/high quality
+        //        print(infoQ)
+        // Even for low information quality, defer to LLM – it can respond with `maybe` which we map to a retryable reason.
+        // Defer to LLM for make/model/color comparison regardless of info quality
         return self.callLLMForComparison(with: mmr)
       }
       .eraseToAnyPublisher()
@@ -249,7 +266,6 @@ public final class TrafficEyeVerifier: ImageVerifier {
       - If the make and color are correct and the model is similar (and low-confidence), a match is likely.
       - If the api provides more information than the user, (e.g. API - Red honda civic User - Honda civic or Red civic) consider them to be equal
       - If the make is correct but the model is very different (e.g. Accord vs CR-V), it's likely not a match.
-      - 
       - If a license plate is part of the user prompt but none is provided by the api, treat it as a non-factor
       The API only outputs colors as "BLUE", "BROWN", "YELLOW", "GRAY", "GREEN", "PURPLE", "RED", "WHITE", "BLACK", "ORANGE".
       Therefore, treat colors that are roughly equivalent (silver vs gray, as equal)
@@ -350,11 +366,21 @@ public final class TrafficEyeVerifier: ImageVerifier {
             rejectReason = .insufficientInfo
           }
         }
+        let vehicleView: Candidate.VehicleView = {
+          switch mmrResult.view?.value.lowercased() {
+          case "frontal": return .front
+          case "rear", "back": return .rear
+          case "side": return .side
+          default: return .unknown
+          }
+        }()
         return VerificationOutcome(
           isMatch: isMatch,
           description:
             "\(mmrResult.color?.value ?? "") \(mmrResult.make?.value ?? "") \(mmrResult.model?.value ?? "")",
-          rejectReason: rejectReason
+          rejectReason: rejectReason,
+          vehicleView: vehicleView,
+          viewScore: mmrResult.view?.score
         )
       }
       .eraseToAnyPublisher()

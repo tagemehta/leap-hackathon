@@ -18,12 +18,23 @@ public struct VerificationOutcome {
   public let description: String
   public let rejectReason: RejectReason?
   public let isPlateMatch: Bool
-  public init(isMatch: Bool, description: String, rejectReason: RejectReason?, isPlateMatch: Bool = false)
-  {
+  public let vehicleView: Candidate.VehicleView?
+  public let viewScore: Double?
+
+  public init(
+    isMatch: Bool,
+    description: String,
+    rejectReason: RejectReason?,
+    isPlateMatch: Bool = false,
+    vehicleView: Candidate.VehicleView? = nil,
+    viewScore: Double? = nil
+  ) {
     self.isMatch = isMatch
     self.description = description
     self.rejectReason = rejectReason
     self.isPlateMatch = isPlateMatch
+    self.vehicleView = vehicleView
+    self.viewScore = viewScore
   }
 }
 

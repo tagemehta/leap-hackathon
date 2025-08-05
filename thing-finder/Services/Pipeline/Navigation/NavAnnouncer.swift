@@ -67,6 +67,11 @@ final class NavAnnouncer {
       lastRetryReasonSpoken[candidate.id] != reason
     {
 
+      // Global retry cooldown
+      let elapsedRetry = now.timeIntervalSince(cache.lastRetryTime)
+      if elapsedRetry < config.retryPhraseCooldown {
+        return
+      }
       // Create retry phrase
       let retryPhrase: String
       switch reason {
@@ -81,6 +86,7 @@ final class NavAnnouncer {
 
       // Speak and record
       speaker.speak(retryPhrase)
+      cache.lastRetryTime = now
       lastRetryReasonSpoken[candidate.id] = reason
       return  // Skip normal status phrase this frame
     }
@@ -98,15 +104,12 @@ final class NavAnnouncer {
         normalizedXPosition: candidate.lastBoundingBox.midX, settings: settings)
     else { return }
 
-    // Waiting-specific global guard.
-    switch candidate.matchStatus {
-    case .waiting:
-      if cache.hasSpokenWaiting { return }
-      cache.hasSpokenWaiting = true
-    case .partial, .full:
-      cache.hasSpokenWaiting = false
-    default:
-      break
+    // Waiting-specific global cooldown guard.
+    if candidate.matchStatus == .waiting {
+      let elapsed = now.timeIntervalSince(cache.lastWaitingTime)
+      if elapsed < config.waitingPhraseCooldown {
+        return // skip if spoken too recently
+      }
     }
 
     // Skip if status unchanged for candidate.
@@ -132,6 +135,9 @@ final class NavAnnouncer {
 
     // Speak and record.
     speaker.speak(phrase)
+    if candidate.matchStatus == .waiting {
+      cache.lastWaitingTime = now
+    }
     cache.lastByCandidate[candidate.id] = (phrase, now)
     cache.lastGlobal = (phrase, now)
   }

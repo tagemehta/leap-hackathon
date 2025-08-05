@@ -7,20 +7,24 @@ public struct NavigationFeedbackConfig {
   public var speechRepeatInterval: TimeInterval = 6
   public var directionChangeInterval: TimeInterval = 4
   public var waitingPhraseCooldown: TimeInterval = 10
+  public var retryPhraseCooldown: TimeInterval = 8
 
   init(
     speechRepeatInterval: TimeInterval,
     directionChangeInterval: TimeInterval,
-    waitingPhraseCooldown: TimeInterval
+    waitingPhraseCooldown: TimeInterval,
+    retryPhraseCooldown: TimeInterval
   ) {
     self.speechRepeatInterval = speechRepeatInterval
     self.directionChangeInterval = directionChangeInterval
     self.waitingPhraseCooldown = waitingPhraseCooldown
+    self.retryPhraseCooldown = retryPhraseCooldown
   }
   init() {
     self.speechRepeatInterval = 6
     self.directionChangeInterval = 4
     self.waitingPhraseCooldown = 10
+    self.retryPhraseCooldown = 8
   }
   // Extend with more as needed
 }
