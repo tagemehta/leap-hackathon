@@ -101,19 +101,19 @@ final class NavAnnouncer {
       let phrase = MatchStatusSpeech.phrase(
         for: candidate.matchStatus, recognisedText: candidate.ocrText,
         detectedDescription: candidate.detectedDescription, rejectReason: candidate.rejectReason,
-        normalizedXPosition: candidate.lastBoundingBox.midX, settings: settings)
+        normalizedXPosition: candidate.lastBoundingBox.midX, settings: settings, lastDirection: candidate.degrees)
     else { return }
 
     // Waiting-specific global cooldown guard.
     if candidate.matchStatus == .waiting {
       let elapsed = now.timeIntervalSince(cache.lastWaitingTime)
       if elapsed < config.waitingPhraseCooldown {
-        return // skip if spoken too recently
+        return  // skip if spoken too recently
       }
     }
 
-    // Skip if status unchanged for candidate.
-    if lastStatus[candidate.id] == candidate.matchStatus {
+    // Skip if status unchanged for candidate or its a lost candidate.
+    if lastStatus[candidate.id] == candidate.matchStatus && candidate.matchStatus != .lost {
       return
     }
     lastStatus[candidate.id] = candidate.matchStatus

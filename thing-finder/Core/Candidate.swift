@@ -33,8 +33,8 @@ public struct Candidate: Identifiable, Equatable {
   // MARK: Verification attempt counters
   /// Counts of verification attempts per verifier – durable across app restarts.
   public struct VerificationTracker: Codable, Equatable {
-    public var trafficAttempts: Int = 0   // failed TrafficEye attempts
-    public var llmAttempts: Int = 0       // failed LLM attempts
+    public var trafficAttempts: Int = 0  // failed TrafficEye attempts
+    public var llmAttempts: Int = 0  // failed LLM attempts
   }
   public var verificationTracker = VerificationTracker()
 
@@ -56,6 +56,8 @@ public struct Candidate: Identifiable, Equatable {
   public var ocrAttempts: Int = 0
   /// Last recognised text (if any) for debugging / speech.
   public var ocrText: String?
+
+  public var degrees: Double = -1.0
 
   /// Convenience – true when verifier has fully approved this candidate.
   public var isMatched: Bool { matchStatus == .full }
@@ -120,6 +122,7 @@ public enum MatchStatus: String, Codable {
   case partial  // API matched, plate not confirmed
   case full  // API + plate confirmed
   case rejected  // negative result (wrong plate / retry exhausted)
+  case lost  // if the car was a full match then was lost it is stored as lost until new match
 }
 
 /// Specific reason for rejection or retry of a candidate.

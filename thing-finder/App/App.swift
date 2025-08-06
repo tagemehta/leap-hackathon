@@ -27,6 +27,15 @@ struct MainTabView: View {
       .tabItem {
         Label("Settings", systemImage: "gear")
       }
+    
+        NavigationStack {
+            CompassView()
+        }
+        .tabItem {
+          Label("Compass", systemImage: "square.and.arrow.up")
+        }
+
+        
     }
   }
 }
