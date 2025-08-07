@@ -1,27 +1,42 @@
 /// VerifierService
 /// --------------
-/// Asynchronously verifies **candidate crops** against the user’s target description
-/// using a Large Language Model (LLM) image-understanding API.
+/// Frame-driven orchestrator that decides **which verifier to call – TrafficEye or LLM –**
+/// and applies the result back onto each `Candidate`.
 ///
-/// High-level flow performed each frame by `tick(...)`:
-/// 1. Fetch candidates in `unknown` match state from the shared `CandidateStore`.
-/// 2. Obtain a `CGImage` for the full frame once (lazy).
-/// 3. Crop each candidate’s bounding box to an RGB JPEG and base-64 encode it.
-/// 4. Call `LLMVerifier.verify(imageData:)` to classify whether the crop matches
-///    the natural-language description.
-/// 5. Update the `CandidateStore` with `.matched`, or remove the candidate if it
-///    fails verification.
+/// ### Core ideas
+/// • **Cost & latency balancing** – TrafficEye (fast, expensive, view-aware) first; LLM (slow, cheap,
+///   view-agnostic) second.
+/// • **Escalation loop** – The pipeline now _cycles indefinitely_ between the two engines using
+///   **durable attempt counters**:
+///   * `trafficAttempts` – consecutive failed TrafficEye calls.
+///   * `llmAttempts`      – consecutive failed LLM calls.
+///   When the active engine exceeds its limit the other engine is selected **and the opposite
+///   counter is reset**, allowing the process to loop forever until a match or hard reject.
 ///
-/// Threading / Combine:
-/// * Network calls are performed off-main; updates to `CandidateStore` occur
-///   on whichever scheduler Combine delivers on (store is thread-safe).
-/// * A small `Set<AnyCancellable>` is kept per instance
+/// ### High-level flow per `tick(...)`
+/// 1. Snapshot candidates from the shared `CandidateStore`.
+/// 2. Determine which candidates are due for (re)verification.
+/// 3. For each candidate choose the engine via `VerificationPolicy.nextKind(for:)`.
+/// 4. **Reset the opposite counter** (implemented inside `VerifierService` just before calling).
+/// 5. Call the chosen verifier asynchronously.
+/// 6. Record success → `.matched`; on failure increment the active counter and keep looping.
+///
+/// ### Attempt limits (see `VerificationPolicy`)
+/// ```
+/// TrafficEye escalation:   side-view after 1 fail, any view after 3 fails
+/// LLM fallback to TE:      after 2 consecutive LLM failures
+/// ```
+/// These constants can be tuned without touching `VerifierService`.
+///
+/// Threading: All verification calls run off-main; `CandidateStore` is thread-safe so updates are
+/// posted directly from Combine sinks.
 ///
 /// Dependencies injected:
-/// * `LLMVerifier` – abstraction over the external LLM API.
-/// * `ImageUtilities` – for bounding-box → pixel rect mapping & buffer → image.
+/// * `TrafficEyeVerifier`, `TwoStepVerifier` (LLM)
+/// * `ImageUtilities` – bounding-box helpers
+/// * `OCREngine` – licence-plate verification
 ///
-/// Created by Tage Mehta on 6/12/25.
+/// Created by Tage Mehta – updated 2025-08-06 to document the continuous TE ↔︎ LLM loop.
 //
 //  DefaultVerifierService.swift
 //  thing-finder
@@ -179,10 +194,20 @@ public final class VerifierService: VerifierServiceProtocol {
           chosenVerifier = TwoStepVerifier(
             targetTextDescription: self.defaultVerifier.targetTextDescription)
         }
+        // Reset opposite verifier attempt counters when switching to allow continuous cycling
+        store.update(id: cand.id) {
+          switch chosenKind {
+          case .trafficEye:
+            $0.verificationTracker.llmAttempts = 0
+          case .llm:
+            $0.verificationTracker.trafficAttempts = 0
+          }
+        }
       } else {
         chosenKind = .trafficEye
         chosenVerifier = self.defaultVerifier
       }
+
       let verifyStartTime = Date()
       chosenVerifier.verify(image: img)
         .replaceError(

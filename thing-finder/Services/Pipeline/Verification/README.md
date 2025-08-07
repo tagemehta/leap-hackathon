@@ -1,4 +1,65 @@
-# Verification Flow (TrafficEye → LLM)
+# Verification Pipeline – Continuous TrafficEye ↔︎ LLM Loop
+
+> _Updated 2025-08-06 for the new cycling policy_
+
+This document explains how the **hybrid verifier** balances cost, latency and accuracy by **cycling indefinitely** between the paid but fast **TrafficEye MMR API** and the slower yet cheaper **LLM-based verifier** until a conclusive decision is reached.
+
+---
+
+## 1  Engines
+
+| Engine | Typical Latency | Relative Cost | When We Prefer It |
+|--------|-----------------|--------------|-------------------|
+| **TrafficEye MMR** | ≈ 50 ms | $$$ | Precise make-model; reliable front / rear discrimination. |
+| **LLM Verifier**   | 3-10 s | $   | Robust to partial / side views; fuzzy semantic reasoning. |
+
+## 2  Escalation Logic (implemented in `VerificationPolicy`)
+```
+side-view                    any view
+   ─────────────────────┐   ┌─────────────────────────────
+TrafficEye failures ≥ 1 ─┘   │ TrafficEye failures ≥ 3     │
+                            ▼                             ▼
+                      choose LLM                   choose LLM
+                           ▲                             │
+                LLM failures ≥ 2 ────────────────────────┘
+```
+1. **TrafficEye first.** After 1 failure on a side view, or 3 failures on any view, escalate to LLM.
+2. **LLM fallback.** After 2 consecutive LLM failures, fall back to TrafficEye.
+3. **Counters reset.** Each time we switch engine the opposite counter is reset, allowing the loop to repeat endlessly until a match or hard-reject.
+
+> Constants (`minPrimaryRetries`, `maxPrimaryRetries`, `maxLLMRetries`) are tunable without touching the service.
+
+## 3  Per-Frame Flow (`VerifierService.tick()`)
+1. Snapshot all `Candidate`s.
+2. Skip if global throttle (`minVerifyInterval`) not elapsed.
+3. For each candidate due for verification:
+   1. Call `VerificationPolicy.nextKind` → **TrafficEye or LLM**.
+   2. **Reset** the opposite counter inside `VerifierService`.
+   3. Crop, encode and send the image to the chosen verifier (async).
+   4. Update `CandidateStore`:
+      * On success → `.matched` (+timings, description).
+      * On failure → increment active counter, remain `.unknown` unless hard reject.
+4. Optionally enqueue OCR when a partial match requires a plate check.
+
+## 4  Counters & Data Fields
+| Field | Purpose |
+|-------|---------|
+| `trafficAttempts` | Consecutive failed TrafficEye calls. |
+| `llmAttempts` | Consecutive failed LLM calls. |
+| `VehicleView` + `viewScore` | Best observed angle assists early side-view escalation. |
+| `lastMMRTime` | Candidate-level TrafficEye throttle. |
+
+## 5  Throttling
+* **Global** – `minVerifyInterval` (1 s) to keep API usage sane.
+* **Per-candidate** – implicit via counters + `lastMMRTime`.
+
+## 6  Why Loop?
+• Vehicles may enter/exist the frame at awkward angles; continuous cycling ensures we keep trying the cheaper, faster path whenever it might now succeed.
+
+• Eliminates sticky failure states where a candidate could rack up counters and get stuck on the slow path for the remainder of its lifetime.
+
+---
+_Last updated: 2025-08-06_
 
 This document describes the **view-aware, cost-aware vehicle verification pipeline** introduced in August 2025.
 
