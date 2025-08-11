@@ -142,7 +142,7 @@ public final class VerifierService: VerifierServiceProtocol {
       // `lastBoundingBox` is already normalised to [0,1] coordinates so width*height gives
       // the fraction of image area occupied.
       let bboxArea = cand.lastBoundingBox.width * cand.lastBoundingBox.height
-      let minAreaThreshold: CGFloat = 0.10  // 10% of the image
+      let minAreaThreshold: CGFloat = 0.01  // 1% of the image
       if bboxArea < minAreaThreshold {
         print("[Verifier] Candidate \(cand.id) skipped – bbox too small (\(bboxArea * 100)%)")
         continue
@@ -209,7 +209,9 @@ public final class VerifierService: VerifierServiceProtocol {
       }
 
       let verifyStartTime = Date()
+      // Enforce a hard timeout on verifier calls to avoid hanging subscriptions
       chosenVerifier.verify(image: img)
+        .timeout(.seconds(5), scheduler: DispatchQueue.global(qos: .userInitiated))
         .replaceError(
           with: VerificationOutcome(isMatch: false, description: "", rejectReason: .apiError)
         )
