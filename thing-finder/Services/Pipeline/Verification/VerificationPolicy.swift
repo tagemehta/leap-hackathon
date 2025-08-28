@@ -20,7 +20,7 @@ public struct VerificationPolicy {
   /// Hard cap – any candidate escalates to LLM after this many consecutive TrafficEye failures.
   public static let maxPrimaryRetries: Int = 3
   /// After this many consecutive LLM failures we fall back to TrafficEye again.
-  public static let maxLLMRetries: Int = 2
+  public static let maxLLMRetries: Int = 3
 
   public static func nextKind(for candidate: Candidate) -> VerifierKind {
     // First: if LLM has already failed too many times, cycle back to TrafficEye

@@ -12,6 +12,13 @@ import Combine
 import Foundation
 import UIKit
 
+enum TwoStepError: Error {
+  case noToolResponse
+  case occluded
+  case lowConfidence
+  case networkError
+}
+
 public final class TwoStepVerifier: ImageVerifier {
   // MARK: - ImageVerifier conformance
   public let targetClasses: [String] = ["vehicle"]
@@ -129,26 +136,20 @@ public final class TwoStepVerifier: ImageVerifier {
         guard let argStr = resp.choices.first?.message.tool_calls?.first?.function.arguments,
           let data = argStr.data(using: .utf8)
         else {
-          throw NSError(
-            domain: "TwoStep", code: 0, userInfo: [NSLocalizedDescriptionKey: "No tool args"])
+          // Return a specific outcome instead of throwing
+          throw TwoStepError.noToolResponse
         }
         let info = try self.decoder.decode(VehicleInfo.self, from: data)
         print(info)
-        // Compute info quality
-        //        let infoQuality = 0.5 * info.make_score + 0.3 * info.model_score + 0.2 * info.color_score
         // Early reject for heavy occlusion
         if info.visible_fraction < 0.5 {
-          throw NSError(
-            domain: "TwoStep", code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "Occluded/partial vehicle"])
+          throw TwoStepError.occluded
         }
         // Reject low extraction confidence to curb over-confidence
         if info.confidence < 0.9 {
-          throw NSError(
-            domain: "TwoStep", code: 2,
-            userInfo: [NSLocalizedDescriptionKey: "Low extraction confidence"])
+          throw TwoStepError.lowConfidence
         }
-        return info  // pass downstream along with infoQuality
+        return info
       }
       .flatMap { [weak self] info -> AnyPublisher<VerificationOutcome, Error> in
         guard let self else {

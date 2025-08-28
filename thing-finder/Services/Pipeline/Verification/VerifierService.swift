@@ -89,15 +89,15 @@ public final class VerifierService: VerifierServiceProtocol {
     let candidatesSnapshot = store.snapshot()
     let pendingUnknown = candidatesSnapshot.values.filter { $0.matchStatus == .unknown }
 
-    // Include stale partial/full candidates for re-verification
-    let staleVerified = candidatesSnapshot.values.filter {
-      ($0.matchStatus == .partial || $0.matchStatus == .full)
-        && (now.timeIntervalSince($0.lastVerified ?? $0.createdAt)
-          >= self.verificationConfig.reverifyInterval)
-    }
+    // // Include stale partial/full candidates for re-verification
+    // let staleVerified = candidatesSnapshot.values.filter {
+    //   ($0.matchStatus == .partial || $0.matchStatus == .full)
+    //     && (now.timeIntervalSince($0.lastVerified ?? $0.createdAt)
+    //       >= self.verificationConfig.reverifyInterval)
+    // }
     // Split candidates into ones we can auto-match (no text description) and ones needing verification.
     var toVerify: [Candidate] = []
-    toVerify.append(contentsOf: staleVerified)
+    // toVerify.append(contentsOf: staleVerified)  // Disabled re-verification
     if defaultVerifier.targetTextDescription.isEmpty {
       for cand in pendingUnknown {
         store.update(id: cand.id) { $0.matchStatus = .full }
@@ -151,7 +151,7 @@ public final class VerifierService: VerifierServiceProtocol {
       // Skip verification if bounding box is significantly taller than it is wide.
       // Allow roughly square boxes (front/rear views) but reject tall portrait shapes.
       let aspectRatio = cand.lastBoundingBox.height / max(cand.lastBoundingBox.width, 0.0001)
-      let maxTallness: CGFloat = 2  // height cannot exceed 200% of width
+      let maxTallness: CGFloat = 3  // height cannot exceed 300% of width
       if aspectRatio > maxTallness {
         print("[Verifier] Candidate \(cand.id) skipped – bbox too tall (h/w=\(aspectRatio))")
         continue
@@ -212,9 +212,25 @@ public final class VerifierService: VerifierServiceProtocol {
       // Enforce a hard timeout on verifier calls to avoid hanging subscriptions
       chosenVerifier.verify(image: img)
         .timeout(.seconds(5), scheduler: DispatchQueue.global(qos: .userInitiated))
-        .replaceError(
-          with: VerificationOutcome(isMatch: false, description: "", rejectReason: .apiError)
-        )
+        .catch { error -> AnyPublisher<VerificationOutcome, Never> in
+          let rejectReason: RejectReason
+          if let twoStepError = error as? TwoStepError {
+            switch twoStepError {
+            case .noToolResponse, .networkError:
+              rejectReason = .apiError
+            case .occluded:
+              rejectReason = .unclearImage
+            case .lowConfidence:
+              rejectReason = .lowConfidence
+            }
+          } else {
+            rejectReason = .apiError
+          }
+          return Just(
+            VerificationOutcome(isMatch: false, description: "", rejectReason: rejectReason)
+          )
+          .eraseToAnyPublisher()
+        }
         .sink { outcome in
           // -------- Post-verification bookkeeping --------
           // Update best view & timing

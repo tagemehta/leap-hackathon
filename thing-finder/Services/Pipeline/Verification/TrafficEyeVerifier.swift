@@ -145,6 +145,14 @@ public final class TrafficEyeVerifier: ImageVerifier {
             isMatch: false, description: "No vehicle detected", rejectReason: .apiError)
           return Just(outcome).setFailureType(to: Error.self).eraseToAnyPublisher()
         }
+        let vehicleView: Candidate.VehicleView =  {
+          switch mmr.view?.value {
+          case "frontal": return .front
+          case "rear", "back": return .rear
+          case "side": return .side
+          default: return .unknown
+          }
+        }()
         // Compute info quality and decide whether to call LLM
         let infoQ = {
           let makeScore = mmr.make?.score ?? 0
@@ -156,7 +164,8 @@ public final class TrafficEyeVerifier: ImageVerifier {
           return Just(
             VerificationOutcome(
               isMatch: false, description: "Insufficient information",
-              rejectReason: .insufficientInfo
+              rejectReason: .insufficientInfo,
+              vehicleView: vehicleView
               
             )
           )

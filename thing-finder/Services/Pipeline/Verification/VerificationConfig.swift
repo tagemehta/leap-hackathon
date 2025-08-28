@@ -36,8 +36,7 @@ public struct VerificationConfig {
   public var cooldownAfterRejectSecs: TimeInterval
 
   /// Maximum frequency (seconds) to call MMR for the *same* candidate.
-  public var perCandidateMMRInterval: TimeInterval = 2
-
+  public var perCandidateMMRInterval: TimeInterval
 
   /// Whether verifier service should use the combined TrafficEye→LLM fallback strategy.
   public var useCombinedVerifier: Bool
@@ -53,8 +52,8 @@ public struct VerificationConfig {
     reverifyInterval: TimeInterval = 10,
     maxEditsForMatch: Int = 1,  // an edit is a change in a single character of the ocr text
     maxEditsForContinue: Int = 2,  // an edit is a change in a single character of the ocr text
-    useCombinedVerifier: Bool = false,
-    perCandidateMMRInterval: TimeInterval = 2
+    useCombinedVerifier: Bool = true,
+    perCandidateMMRInterval: TimeInterval = 0.8
   ) {
     self.cooldownAfterRejectSecs = cooldownAfterRejectSecs
     self.expectedPlate = expectedPlate?.uppercased()
