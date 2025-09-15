@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		319A920F2E7777DA0018F113 /* LeapModelDownloader in Frameworks */ = {isa = PBXBuildFile; productRef = 319A920E2E7777DA0018F113 /* LeapModelDownloader */; };
+		319A92112E7777DA0018F113 /* LeapSDK in Frameworks */ = {isa = PBXBuildFile; productRef = 319A92102E7777DA0018F113 /* LeapSDK */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		3106F9122E2C3DBD00A9092B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -59,6 +64,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				319A920F2E7777DA0018F113 /* LeapModelDownloader in Frameworks */,
+				319A92112E7777DA0018F113 /* LeapSDK in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -126,6 +133,8 @@
 			);
 			name = "thing-finder";
 			packageProductDependencies = (
+				319A920E2E7777DA0018F113 /* LeapModelDownloader */,
+				319A92102E7777DA0018F113 /* LeapSDK */,
 			);
 			productName = "thing-finder";
 			productReference = 313783A42DF497B200C36BEE /* thing-finder.app */;
@@ -159,6 +168,9 @@
 			);
 			mainGroup = 3137839B2DF497B200C36BEE;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				319A920D2E7777DA0018F113 /* XCRemoteSwiftPackageReference "leap-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 313783A52DF497B200C36BEE /* Products */;
 			projectDirPath = "";
@@ -469,6 +481,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		319A920D2E7777DA0018F113 /* XCRemoteSwiftPackageReference "leap-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Liquid4All/leap-ios.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		319A920E2E7777DA0018F113 /* LeapModelDownloader */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 319A920D2E7777DA0018F113 /* XCRemoteSwiftPackageReference "leap-ios" */;
+			productName = LeapModelDownloader;
+		};
+		319A92102E7777DA0018F113 /* LeapSDK */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 319A920D2E7777DA0018F113 /* XCRemoteSwiftPackageReference "leap-ios" */;
+			productName = LeapSDK;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3137839C2DF497B200C36BEE /* Project object */;
 }

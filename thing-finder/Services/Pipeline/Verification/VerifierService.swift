@@ -66,6 +66,9 @@ public final class VerifierService: VerifierServiceProtocol {
   /// Minimum interval between successive batches of verify() requests.
   private let minVerifyInterval: TimeInterval = 1  // seconds
 
+  /// Flag to track if verification is currently in progress
+  private var isVerificationInProgress = false
+
   init(
     verifier: ImageVerifier, imgUtils: ImageUtilities, config: VerificationConfig,
     ocrEngine: OCREngine = VisionOCREngine()
@@ -151,7 +154,7 @@ public final class VerifierService: VerifierServiceProtocol {
       // Skip verification if bounding box is significantly taller than it is wide.
       // Allow roughly square boxes (front/rear views) but reject tall portrait shapes.
       let aspectRatio = cand.lastBoundingBox.height / max(cand.lastBoundingBox.width, 0.0001)
-      let maxTallness: CGFloat = 3  // height cannot exceed 300% of width
+      let maxTallness: CGFloat = 10_000_000  // height cannot exceed 300% of width
       if aspectRatio > maxTallness {
         print("[Verifier] Candidate \(cand.id) skipped – bbox too tall (h/w=\(aspectRatio))")
         continue
@@ -208,11 +211,47 @@ public final class VerifierService: VerifierServiceProtocol {
         chosenVerifier = self.defaultVerifier
       }
 
+      // Skip verification if one is already in progress
+      if isVerificationInProgress {
+        print(
+          "[Verifier] Skipping verification for candidate \(cand.id) - another verification is in progress"
+        )
+        continue
+      }
+
+      // Set flag to prevent other verifications while this one is in progress
+      isVerificationInProgress = true
+
+      print("[VerifierService] Starting verification for candidate \(cand.id)")
       let verifyStartTime = Date()
       // Enforce a hard timeout on verifier calls to avoid hanging subscriptions
-      chosenVerifier.verify(image: img)
-        .timeout(.seconds(5), scheduler: DispatchQueue.global(qos: .userInitiated))
+      let publisher = chosenVerifier.verify(image: img)
+      print("[VerifierService] Got publisher from verifier")
+
+      // Make sure we're subscribing on a background queue and receiving on the main queue
+      publisher
+        .subscribe(on: DispatchQueue.global(qos: .userInitiated))
+        .receive(on: DispatchQueue.main)
+        .handleEvents(
+          receiveSubscription: { subscription in
+            print("[VerifierService] Received subscription: \(subscription)")
+          },
+          receiveOutput: { output in
+            print("[VerifierService] Received output: \(output)")
+          },
+          receiveCompletion: { completion in
+            print("[VerifierService] Received completion: \(completion)")
+          },
+          receiveCancel: {
+            print("[VerifierService] Received cancel")
+          },
+          receiveRequest: { demand in
+            print("[VerifierService] Received request: \(demand)")
+          }
+        )
+        .timeout(.seconds(1000), scheduler: DispatchQueue.global(qos: .userInitiated))
         .catch { error -> AnyPublisher<VerificationOutcome, Never> in
+          print("[VerifierService] Caught error: \(error)")
           let rejectReason: RejectReason
           if let twoStepError = error as? TwoStepError {
             switch twoStepError {
@@ -231,7 +270,18 @@ public final class VerifierService: VerifierServiceProtocol {
           )
           .eraseToAnyPublisher()
         }
-        .sink { outcome in
+        .sink { [weak self] outcome in
+          print("[VerifierService] Sink received outcome: \(outcome)")
+          guard let self = self else {
+            print("[VerifierService] Self is nil in sink")
+            return
+          }
+          print("[VerifierService] Processing outcome in sink")
+          // Reset flag when verification is complete
+          defer {
+            print("[VerifierService] Resetting isVerificationInProgress flag")
+            self.isVerificationInProgress = false
+          }
           // -------- Post-verification bookkeeping --------
           // Update best view & timing
           let latency = Date().timeIntervalSince(verifyStartTime)

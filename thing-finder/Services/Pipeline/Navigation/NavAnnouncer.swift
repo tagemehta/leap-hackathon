@@ -78,7 +78,7 @@ final class NavAnnouncer {
       case .unclearImage: retryPhrase = "Picture too blurry, trying again"
       case .insufficientInfo: retryPhrase = "Need a better view, retrying"
       case .lowConfidence: retryPhrase = "Not sure yet, taking another shot"
-      case .apiError: retryPhrase = "Detection error, retrying"
+      case .apiError: retryPhrase = ""
       case .licensePlateNotVisible: retryPhrase = "Can't see the plate, retrying"
       case .ambiguous: retryPhrase = "Results unclear, retrying"
       default: return  // No speech for non-retryable reasons

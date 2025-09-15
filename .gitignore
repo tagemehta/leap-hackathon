@@ -7,3 +7,4 @@ CVModels/
 datasets/*
 */car_eval*.json
 results/*
+.bundle
