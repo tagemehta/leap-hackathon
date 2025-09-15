@@ -44,8 +44,8 @@ final class DriftRepairService: DriftRepairServiceProtocol {
 
   init(
     imageUtils: ImageUtilities = ImageUtilities(),
-    repairStride: Int = 15,
-    simThreshold: Float = 0.90
+    repairStride: Int = 10,
+    simThreshold: Float = 0.5
   ) {
     self.imageUtils = imageUtils
     self.repairStride = repairStride

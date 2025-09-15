@@ -8,13 +8,13 @@ struct SettingsView: View {
       List {
         // MARK: - Navigation Feedback
         Section(header: Text("Navigation Feedback")) {
-          Toggle("Navigate Before Plate Match", isOn: $settings.allowPartialNavigation)
-          Text("Start navigation before a license plate match is confirmed.")
-            .font(.caption)
-            .foregroundColor(.secondary)
+//          Toggle("Navigate Before Plate Match", isOn: $settings.allowPartialNavigation)
+//          Text("Start navigation before a license plate match is confirmed.")
+//            .font(.caption)
+//            .foregroundColor(.secondary)
 
-          Toggle("Announce All Detected Cars", isOn: $settings.announceRejected)
-          Text("Announce every detected car, not just the target.")
+          Toggle("Announce All Detected Matches", isOn: $settings.announceRejected)
+          Text("Announce every detected similar objects, not just the target.")
             .font(.caption)
             .foregroundColor(.secondary)
 
